@@ -1763,7 +1763,7 @@ function BoardForm({ form, h, listings, title, onSave, onCancel, setForm }) {
         </div>
       </div>
       <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:12, marginBottom:0 }}>
-       <div className="fg"><label className="fl">Length</label><input className="fi" placeholder={`e.g. 6'2"`} value={form.length} onChange={e=>h("length",e.target.value)} /></div>
+      <div className="fg"><label className="fl">Length</label><input className="fi" placeholder={`e.g. 6'2"`} value={form.length} onChange={e=>h("length",e.target.value)} /></div>
         <div className="fg"><label className="fl">Volume (L)</label><input className="fi" placeholder="e.g. 32.5" value={form.volume} onChange={e=>h("volume",e.target.value)} /></div>
         <div className="fg"><label className="fl">Year</label><input className="fi" placeholder="e.g. 2023" value={form.year} onChange={e=>h("year",e.target.value)} /></div>
       </div>
