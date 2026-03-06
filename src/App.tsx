@@ -17,6 +17,7 @@ const LOCALES = [
   { code:"en-AU", flag:"🇦🇺", label:"Australia",   lang:"English",    dir:"ltr" },
   { code:"en-US", flag:"🇺🇸", label:"USA",          lang:"English",    dir:"ltr" },
   { code:"en-GB", flag:"🇬🇧", label:"UK",           lang:"English",    dir:"ltr" },
+  { code:"en-NZ", flag:"🇳🇿", label:"New Zealand",  lang:"English",    dir:"ltr" },
   { code:"pt-BR", flag:"🇧🇷", label:"Brasil",       lang:"Português",  dir:"ltr" },
   { code:"pt-PT", flag:"🇵🇹", label:"Portugal",     lang:"Português",  dir:"ltr" },
   { code:"fr",    flag:"🇫🇷", label:"France",       lang:"Français",   dir:"ltr" },
@@ -114,7 +115,17 @@ const TRANSLATIONS = {
 function t(key, locale) {
   // English locales all use the default T dictionary
   if (!locale || locale.startsWith("en")) return T[key] || key;
-  const dict = TRANSLATIONS[locale];
+  
+  // Check exact locale match first
+  let dict = TRANSLATIONS[locale];
+  
+  // Fallback: try language code only (e.g., pt-PT -> pt-BR)
+  if (!dict) {
+    const lang = locale.split("-")[0];
+    const fallback = Object.keys(TRANSLATIONS).find(k => k.startsWith(lang));
+    if (fallback) dict = TRANSLATIONS[fallback];
+  }
+  
   if (dict && dict[key] !== undefined) return dict[key];
   return T[key] || key; // fallback to English
 }
@@ -2359,8 +2370,15 @@ export default function App() {
   const [logoImage,  setLogoImage]  = useState(() => {
     try { return localStorage.getItem("ss_logoImage") || ""; } catch { return ""; }
   });
-  const [locale,     setLocale]     = useState("en-AU");
+  const [locale,     setLocale]     = useState(() => {
+    try { return localStorage.getItem("ss_locale") || "en-AU"; } catch { return "en-AU"; }
+  });
   const [filterCountries, setFilterCountries] = useState([]);
+
+  // Persist locale to localStorage
+  useEffect(() => {
+    try { localStorage.setItem("ss_locale", locale); } catch {}
+  }, [locale]);
 
   // Persist hero and logo images to localStorage
   useEffect(() => {
