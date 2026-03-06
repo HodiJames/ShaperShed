@@ -2357,7 +2357,12 @@ export default function App() {
   const [modal,      setModal]      = useState(null);
   const [user,       setUser]       = useState(null);
   const [savedIds,   setSavedIds]   = useState([]);
-  const [listings,   setListings]   = useState(SAMPLE_LISTINGS);
+  const [listings,   setListings]   = useState(() => {
+    try {
+      const saved = localStorage.getItem("ss_listings");
+      return saved ? JSON.parse(saved) : SAMPLE_LISTINGS;
+    } catch { return SAMPLE_LISTINGS; }
+  });
   const [pending,        setPending]        = useState([]);
   const [pendingReviews, setPendingReviews] = useState([]);
   const [selected,   setSelected]   = useState(null);
@@ -2378,6 +2383,10 @@ export default function App() {
   useEffect(() => {
     try { localStorage.setItem("ss_logoImage", logoImage); } catch {}
   }, [logoImage]);
+  // Persist listings to localStorage (for featured status, edits, etc.)
+  useEffect(() => {
+    try { localStorage.setItem("ss_listings", JSON.stringify(listings)); } catch {}
+  }, [listings]);
 
   const localeObj = LOCALES.find(l => l.code === locale) || LOCALES[0];
   const tr = key => t(key, locale);
