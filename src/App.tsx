@@ -1367,16 +1367,12 @@ function ListingPage({ listing }) {
           </div>
         )}
 
-        {/* For non-premium: Show reviews and Q&A right after About */}
-        {!isPremium && (
-          <>
-            <ReviewSection
-              listing={listing}
-              onPendingReview={rv => { setPendingReviews(p => [...p, rv]); showToast("Review submitted — thanks!"); }}
-            />
-            <AskAShaper listing={listing} />
-          </>
-        )}
+        {/* Reviews and Q&A - always shown after About for all listings */}
+        <ReviewSection
+          listing={listing}
+          onPendingReview={rv => { setPendingReviews(p => [...p, rv]); showToast("Review submitted — thanks!"); }}
+        />
+        <AskAShaper listing={listing} />
 
         {isPremium && listing.youtube?.length > 0 && (
           <div className="ld-sec">
@@ -1454,17 +1450,6 @@ function ListingPage({ listing }) {
             description="When the shaper upgrades to Premium, they can showcase their full range with individual board cards — dimensions, fin setup, ideal conditions, and pricing."
             features={["Full board catalogue","Dimensions & fins","Who each board suits","Custom order pricing"]}
           />
-        )}
-
-        {/* For premium: Show reviews and Q&A at the end */}
-        {isPremium && (
-          <>
-            <ReviewSection
-              listing={listing}
-              onPendingReview={rv => { setPendingReviews(p => [...p, rv]); showToast("Review submitted — thanks!"); }}
-            />
-            <AskAShaper listing={listing} />
-          </>
         )}
       </div>
     </div>
