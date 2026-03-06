@@ -1251,7 +1251,9 @@ function PremiumLock({ title, description, features }) {
       <div className="ld-lock-blur">
         The River Pig · 7'0"–7'6" · 2+1 fins · $1,100 &nbsp;·&nbsp; The Dagger · 5'10"–6'2" · Thruster · $950
       </div>
-      <button className="btn bp" style={{ marginTop: 4 }}>Upgrade to Premium ↗</button>
+      <p style={{ fontSize: 13, color: "var(--txm)", marginTop: 12, maxWidth: 360, lineHeight: 1.6 }}>
+        This content is available when <strong>the shaper</strong> upgrades to a Premium listing.
+      </p>
     </div>
   );
 }
@@ -1346,6 +1348,36 @@ function ListingPage({ listing }) {
           )}
         </div>
 
+        {/* Social links section - always visible */}
+        {(listing.website || listing.instagram) && (
+          <div className="ld-sec">
+            <div className="ld-sec-title">Connect</div>
+            <div className="ld-social">
+              {listing.website && (
+                <TrackedLink href={listing.website} listingId={listing.id} listingName={listing.name} label="Website" type="website" className="ld-socbtn web">
+                  🌐 Visit Website
+                </TrackedLink>
+              )}
+              {listing.instagram && (
+                <TrackedLink href={`https://instagram.com/${listing.instagram}`} listingId={listing.id} listingName={listing.name} label="Instagram" type="instagram" className="ld-socbtn ig">
+                  📷 @{listing.instagram}
+                </TrackedLink>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* For non-premium: Show reviews and Q&A right after About */}
+        {!isPremium && (
+          <>
+            <ReviewSection
+              listing={listing}
+              onPendingReview={rv => { setPendingReviews(p => [...p, rv]); showToast("Review submitted — thanks!"); }}
+            />
+            <AskAShaper listing={listing} />
+          </>
+        )}
+
         {isPremium && listing.youtube?.length > 0 && (
           <div className="ld-sec">
             <div className="ld-sec-title">{tr("listing.youtube")} <span>{tr("listing.premium")}</span></div>
@@ -1364,7 +1396,7 @@ function ListingPage({ listing }) {
         {!isPremium && (
           <PremiumLock
             title="Watch this shaper at work"
-            description="Premium shapers embed a video — watch the full shaping process, hear their philosophy, and get a feel for who they are before you order a board."
+            description="When the shaper upgrades to Premium, they can embed a video — watch their full shaping process, hear their philosophy, and get a feel for who they are before you order a board."
             features={["1 embedded YouTube video","Shaping process","Brand story","Build confidence before you buy"]}
           />
         )}
@@ -1382,7 +1414,7 @@ function ListingPage({ listing }) {
         {!isPremium && (
           <PremiumLock
             title="Shaping Knowledge — how they think"
-            description="Premium shapers share their philosophy on rocker, concave, tail shapes, outlines and more."
+            description="When the shaper upgrades to Premium, they can share their philosophy on rocker, concave, tail shapes, outlines and more."
             features={["Rocker explained","Concave philosophy","Tail & outline thinking","Why it matters for your surfing"]}
           />
         )}
@@ -1419,17 +1451,21 @@ function ListingPage({ listing }) {
         {!isPremium && (
           <PremiumLock
             title="Board Portfolio — every shape, explained"
-            description="Premium shapers showcase their full range with individual board cards — dimensions, fin setup, ideal conditions, and pricing."
+            description="When the shaper upgrades to Premium, they can showcase their full range with individual board cards — dimensions, fin setup, ideal conditions, and pricing."
             features={["Full board catalogue","Dimensions & fins","Who each board suits","Custom order pricing"]}
           />
         )}
 
-        <ReviewSection
-          listing={listing}
-          onPendingReview={rv => { setPendingReviews(p => [...p, rv]); showToast("Review submitted — thanks!"); }}
-        />
-
-        <AskAShaper listing={listing} />
+        {/* For premium: Show reviews and Q&A at the end */}
+        {isPremium && (
+          <>
+            <ReviewSection
+              listing={listing}
+              onPendingReview={rv => { setPendingReviews(p => [...p, rv]); showToast("Review submitted — thanks!"); }}
+            />
+            <AskAShaper listing={listing} />
+          </>
+        )}
       </div>
     </div>
   );
