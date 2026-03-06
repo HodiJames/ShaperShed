@@ -1008,8 +1008,7 @@ function ReviewSection({ listing, onPendingReview }) {
     setAdding(false);
   };
 
-  if (!reviews.length && !user) return null;
-
+  // Always show section - either reviews exist or user can add one
   return (
     <>
       <div className="ld-sec">
@@ -1041,6 +1040,12 @@ function ReviewSection({ listing, onPendingReview }) {
               </div>
             ))}
           </div>
+        )}
+
+        {reviews.length === 0 && (
+          <p style={{ fontSize:14, color:"var(--tx2)", marginBottom:14 }}>
+            No reviews yet — be the first to share your experience with {listing.name}.
+          </p>
         )}
 
         {reviews.length > 3 && (
