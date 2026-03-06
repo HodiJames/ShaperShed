@@ -747,8 +747,8 @@ function Card({ listing, onClick }) {
 // SIDEBAR
 // ─────────────────────────────────────────────
 function Sidebar({ listings, categories, activeCat, setCat, search, setSearch, onSubmit }) {
+  const { filterCountries, setFilterCountries } = useContext(Ctx);
   const [filterOpen, setFilterOpen] = useState(false);
-  const [filterCountries, setFilterCountries] = useState([]);
 
   const toggleCountry = c => setFilterCountries(p => p.includes(c) ? p.filter(x => x !== c) : [...p, c]);
   const clearFilters  = () => setFilterCountries([]);
@@ -827,13 +827,14 @@ function Sidebar({ listings, categories, activeCat, setCat, search, setSearch, o
 // HOME PAGE
 // ─────────────────────────────────────────────
 function HomePage({ listings: allListings, onView }) {
-  const { setPage, categories, activeCat, setCat, search, setSearch, user, heroImage, tr } = useContext(Ctx);
+  const { setPage, categories, activeCat, setCat, search, setSearch, user, heroImage, tr, filterCountries } = useContext(Ctx);
 
   const filtered = allListings.filter(l => {
     const mc = activeCat === "all" || l.category.includes(activeCat);
     const q = search.toLowerCase();
     const ms = !q || l.name.toLowerCase().includes(q) || l.tagline.toLowerCase().includes(q) || l.tags.some(t => t.toLowerCase().includes(q));
-    return mc && ms;
+    const countryMatch = filterCountries.length === 0 || filterCountries.includes(l.country);
+    return mc && ms && countryMatch;
   });
 
   const featured = filtered.filter(l => l.featured);
@@ -2379,6 +2380,7 @@ export default function App() {
     try { return localStorage.getItem("ss_logoImage") || ""; } catch { return ""; }
   });
   const [locale,     setLocale]     = useState("en-AU");
+  const [filterCountries, setFilterCountries] = useState([]);
 
   // Persist hero and logo images to localStorage
   useEffect(() => {
@@ -2429,8 +2431,9 @@ export default function App() {
     pendingReviews, setPendingReviews,
     showToast, selected, categories, setCategories,
     heroImage, setHeroImage,
-    logoImage, setLogoImage, // NEW
+    logoImage, setLogoImage,
     locale, setLocale, tr,
+    filterCountries, setFilterCountries,
   };
 
   return (
