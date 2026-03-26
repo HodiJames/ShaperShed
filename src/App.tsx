@@ -526,22 +526,48 @@ const BADGE_DEFS = [
 // AUTH MODAL
 // ─────────────────────────────────────────────
 function AuthModal({ mode: init, onClose, onAuth }) {
-  const { tr } = useContext(Ctx);
+  const { tr, showToast } = useContext(Ctx);
   const [mode, setMode] = useState(init);
   const [f, setF] = useState({ firstName:"", lastName:"", email:"", pw:"", heard:"", interest:"" });
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
   const h = (k, v) => setF(p => ({ ...p, [k]: v }));
 
-  const sub = e => {
+  const sub = async e => {
     e.preventDefault();
-    onAuth({
-      name: `${f.firstName} ${f.lastName}`.trim() || f.email.split("@")[0],
-      firstName: f.firstName, lastName: f.lastName,
-      email: f.email,
-      heard: f.heard, interest: f.interest,
-      badges: ["founding"],
-      contributions: 0, reviews: 0, nominations: 0,
-      joinDate: new Date().toLocaleDateString("en-AU", { month:"long", year:"numeric" }),
-    });
+    setLoading(true);
+    setError("");
+    
+    try {
+      const endpoint = mode === "in" ? "/api/auth/login" : "/api/auth/register";
+      const body = mode === "in" 
+        ? { email: f.email, password: f.pw }
+        : { email: f.email, password: f.pw, firstName: f.firstName, lastName: f.lastName, heard: f.heard, lookingFor: f.interest };
+      
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body)
+      });
+      
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.detail || "Authentication failed");
+      }
+      
+      const userData = await res.json();
+      onAuth({
+        ...userData,
+        badges: ["founding"],
+        contributions: 0, reviews: 0, nominations: 0,
+        joinDate: new Date().toLocaleDateString("en-AU", { month:"long", year:"numeric" }),
+      });
+    } catch (err) {
+      setError(err.message);
+      showToast(err.message);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -551,15 +577,17 @@ function AuthModal({ mode: init, onClose, onAuth }) {
         {mode === "in" ? <>
           <h2>{tr("auth.welcomeBack")}</h2>
           <p>{tr("auth.signinDesc")}</p>
+          {error && <div style={{color:"#dc2626",fontSize:13,marginBottom:12,padding:"8px 12px",background:"#fef2f2",borderRadius:6}}>{error}</div>}
           <form onSubmit={sub}>
             <div className="fg"><label className="fl">{tr("sub.email")} *</label><input className="fi" type="email" required placeholder="you@example.com" value={f.email} onChange={e => h("email",e.target.value)} /></div>
             <div className="fg"><label className="fl">{tr("auth.password")} *</label><input className="fi" type="password" required placeholder="••••••••" value={f.pw} onChange={e => h("pw",e.target.value)} /></div>
-            <button type="submit" className="btn bp fbtn">{tr("nav.signin")}</button>
+            <button type="submit" className="btn bp fbtn" disabled={loading}>{loading ? "Signing in..." : tr("nav.signin")}</button>
           </form>
           <div className="swlnk">{tr("auth.noAccount")} <span onClick={() => setMode("up")}>{tr("auth.joinFree")}</span></div>
         </> : <>
           <h2>{tr("auth.joinTitle")}</h2>
           <p>{tr("auth.joinDesc")}</p>
+          {error && <div style={{color:"#dc2626",fontSize:13,marginBottom:12,padding:"8px 12px",background:"#fef2f2",borderRadius:6}}>{error}</div>}
           <form onSubmit={sub}>
             <div className="f2">
               <div className="fg"><label className="fl">{tr("sub.firstName")} *</label><input className="fi" required placeholder="Jane" value={f.firstName} onChange={e => h("firstName",e.target.value)} /></div>
@@ -587,7 +615,7 @@ function AuthModal({ mode: init, onClose, onAuth }) {
                 <option>Other</option>
               </select>
             </div>
-            <button type="submit" className="btn bp fbtn">{tr("auth.createAccount")}</button>
+            <button type="submit" className="btn bp fbtn" disabled={loading}>{loading ? "Creating account..." : tr("auth.createAccount")}</button>
           </form>
           <div style={{ fontSize:11, color:"var(--txm)", marginTop:12, lineHeight:1.6, padding:"0 2px" }}>
             By joining, you agree to receive occasional updates from Shaper Shed about new listings, features, and community news. Your details are kept private — never shared with third parties. Unsubscribe any time.
@@ -2567,8 +2595,24 @@ export default function App() {
   const [activeCat,  setCat]        = useState("all");
   const [search,     setSearch]     = useState("");
   const [modal,      setModal]      = useState(null);
-  const [user,       setUser]       = useState(null);
-  const [savedIds,   setSavedIds]   = useState([]);
+  const [user,       setUser]       = useState(() => {
+    try {
+      const saved = localStorage.getItem("ss_user");
+      return saved ? JSON.parse(saved) : null;
+    } catch { return null; }
+  });
+  const [savedIds,   setSavedIds]   = useState(() => {
+    try {
+      const savedUser = localStorage.getItem("ss_user");
+      if (savedUser) {
+        const u = JSON.parse(savedUser);
+        const key = `ss_saved_${u.email}`;
+        const saved = localStorage.getItem(key);
+        return saved ? JSON.parse(saved) : [];
+      }
+      return [];
+    } catch { return []; }
+  });
   const [listings,   setListings]   = useState(() => {
     try {
       const saved = localStorage.getItem("ss_listings");
@@ -2624,11 +2668,80 @@ export default function App() {
     try { localStorage.setItem("ss_listings", JSON.stringify(listings)); } catch {}
   }, [listings]);
 
+  // Persist user to localStorage
+  useEffect(() => {
+    try {
+      if (user) {
+        localStorage.setItem("ss_user", JSON.stringify(user));
+      } else {
+        localStorage.removeItem("ss_user");
+      }
+    } catch {}
+  }, [user]);
+
+  // Load savedIds when user changes (login/logout)
+  useEffect(() => {
+    if (user?.email) {
+      // Load from backend
+      fetch(`/api/bookmarks/${encodeURIComponent(user.email)}`)
+        .then(res => res.json())
+        .then(data => {
+          setSavedIds(data.savedIds || []);
+          // Also cache locally
+          try {
+            const key = `ss_saved_${user.email}`;
+            localStorage.setItem(key, JSON.stringify(data.savedIds || []));
+          } catch {}
+        })
+        .catch(() => {
+          // Fallback to localStorage
+          try {
+            const key = `ss_saved_${user.email}`;
+            const saved = localStorage.getItem(key);
+            setSavedIds(saved ? JSON.parse(saved) : []);
+          } catch {
+            setSavedIds([]);
+          }
+        });
+    } else {
+      setSavedIds([]);
+    }
+  }, [user?.email]);
+
   const localeObj = LOCALES.find(l => l.code === locale) || LOCALES[0];
   const tr = key => t(key, locale);
 
   const showToast   = msg => setToast(msg);
-  const toggleSave  = id  => setSavedIds(p => p.includes(id) ? p.filter(x => x !== id) : [...p, id]);
+  
+  const toggleSave = async (id) => {
+    if (!user?.email) return;
+    
+    // Optimistic update
+    setSavedIds(p => p.includes(id) ? p.filter(x => x !== id) : [...p, id]);
+    
+    try {
+      const res = await fetch(`/api/bookmarks/${encodeURIComponent(user.email)}/toggle`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ listingId: id })
+      });
+      
+      if (res.ok) {
+        const data = await res.json();
+        setSavedIds(data.savedIds);
+        // Update local cache
+        try {
+          const key = `ss_saved_${user.email}`;
+          localStorage.setItem(key, JSON.stringify(data.savedIds));
+        } catch {}
+      }
+    } catch (err) {
+      console.error("Failed to save bookmark:", err);
+      // Revert optimistic update on error
+      setSavedIds(p => p.includes(id) ? p.filter(x => x !== id) : [...p, id]);
+    }
+  };
+  
   const handleAuth  = u   => {
     const role = isAdmin(u.email) ? "superadmin" : "user";
     setUser({ ...u, role });

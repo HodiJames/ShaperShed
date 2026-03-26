@@ -1,11 +1,12 @@
 import os
 import hashlib
-import json
-from fastapi import FastAPI
+from datetime import datetime, timezone
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, List
 from dotenv import load_dotenv
+from pymongo import MongoClient
 
 load_dotenv()
 
@@ -19,8 +20,17 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Simple in-memory cache for translations
-translation_cache = {}
+# MongoDB connection
+MONGO_URL = os.environ.get("MONGO_URL", "mongodb://localhost:27017")
+DB_NAME = os.environ.get("DB_NAME", "shaper_shed")
+client = MongoClient(MONGO_URL)
+db = client[DB_NAME]
+
+# Collections
+users_collection = db["users"]
+videos_collection = db["videos"]
+translations_collection = db["translations"]
+bookmarks_collection = db["bookmarks"]
 
 LANGUAGE_NAMES = {
     "pt-BR": "Brazilian Portuguese",
@@ -32,6 +42,30 @@ LANGUAGE_NAMES = {
     "ko": "Korean",
 }
 
+# ──────────────────────────────────────────────
+# MODELS
+# ──────────────────────────────────────────────
+
+class UserCreate(BaseModel):
+    email: str
+    password: str
+    firstName: str
+    lastName: str
+    heard: Optional[str] = ""
+    lookingFor: Optional[str] = ""
+
+class UserLogin(BaseModel):
+    email: str
+    password: str
+
+class UserResponse(BaseModel):
+    email: str
+    firstName: str
+    lastName: str
+    name: str
+    role: str
+    createdAt: str
+
 class TranslateRequest(BaseModel):
     text: str
     target_locale: str
@@ -42,6 +76,196 @@ class TranslateResponse(BaseModel):
     translated: str
     locale: str
     cached: bool = False
+
+class VideoCreate(BaseModel):
+    url: str
+    path: str
+    name: str
+    size: int
+    type: str
+    title: Optional[str] = ""
+    description: Optional[str] = ""
+
+class VideoShare(BaseModel):
+    videoId: str
+    shaperIds: List[int]
+
+class BookmarkUpdate(BaseModel):
+    listingId: int
+
+# ──────────────────────────────────────────────
+# HELPERS
+# ──────────────────────────────────────────────
+
+def hash_password(password: str) -> str:
+    return hashlib.sha256(password.encode()).hexdigest()
+
+def get_user_by_email(email: str):
+    return users_collection.find_one({"email": email.lower()}, {"_id": 0})
+
+SUPER_ADMINS = ["admin@shapersheds.com", "hello@shapersheds.com"]
+
+def is_admin(email: str) -> bool:
+    return email.lower() in [e.lower() for e in SUPER_ADMINS]
+
+# ──────────────────────────────────────────────
+# AUTH ENDPOINTS
+# ──────────────────────────────────────────────
+
+@app.post("/api/auth/register", response_model=UserResponse)
+async def register(user: UserCreate):
+    # Check if user exists
+    if get_user_by_email(user.email):
+        raise HTTPException(status_code=400, detail="Email already registered")
+    
+    now = datetime.now(timezone.utc).isoformat()
+    user_doc = {
+        "email": user.email.lower(),
+        "password": hash_password(user.password),
+        "firstName": user.firstName,
+        "lastName": user.lastName,
+        "name": f"{user.firstName} {user.lastName}",
+        "heard": user.heard,
+        "lookingFor": user.lookingFor,
+        "role": "superadmin" if is_admin(user.email) else "user",
+        "createdAt": now,
+    }
+    users_collection.insert_one(user_doc)
+    
+    return UserResponse(
+        email=user_doc["email"],
+        firstName=user_doc["firstName"],
+        lastName=user_doc["lastName"],
+        name=user_doc["name"],
+        role=user_doc["role"],
+        createdAt=now
+    )
+
+@app.post("/api/auth/login", response_model=UserResponse)
+async def login(creds: UserLogin):
+    user = get_user_by_email(creds.email)
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+    
+    if user["password"] != hash_password(creds.password):
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+    
+    return UserResponse(
+        email=user["email"],
+        firstName=user["firstName"],
+        lastName=user["lastName"],
+        name=user["name"],
+        role="superadmin" if is_admin(user["email"]) else "user",
+        createdAt=user.get("createdAt", "")
+    )
+
+# ──────────────────────────────────────────────
+# BOOKMARKS ENDPOINTS
+# ──────────────────────────────────────────────
+
+@app.get("/api/bookmarks/{email}")
+async def get_bookmarks(email: str):
+    doc = bookmarks_collection.find_one({"email": email.lower()}, {"_id": 0})
+    if doc:
+        return {"savedIds": doc.get("savedIds", [])}
+    return {"savedIds": []}
+
+@app.post("/api/bookmarks/{email}/toggle")
+async def toggle_bookmark(email: str, bookmark: BookmarkUpdate):
+    email = email.lower()
+    doc = bookmarks_collection.find_one({"email": email})
+    
+    if doc:
+        saved_ids = doc.get("savedIds", [])
+        if bookmark.listingId in saved_ids:
+            saved_ids.remove(bookmark.listingId)
+            action = "removed"
+        else:
+            saved_ids.append(bookmark.listingId)
+            action = "added"
+        bookmarks_collection.update_one(
+            {"email": email},
+            {"$set": {"savedIds": saved_ids, "updatedAt": datetime.now(timezone.utc).isoformat()}}
+        )
+    else:
+        saved_ids = [bookmark.listingId]
+        action = "added"
+        bookmarks_collection.insert_one({
+            "email": email,
+            "savedIds": saved_ids,
+            "createdAt": datetime.now(timezone.utc).isoformat(),
+            "updatedAt": datetime.now(timezone.utc).isoformat()
+        })
+    
+    return {"savedIds": saved_ids, "action": action}
+
+# ──────────────────────────────────────────────
+# VIDEO ENDPOINTS
+# ──────────────────────────────────────────────
+
+@app.post("/api/videos/{email}")
+async def create_video(email: str, video: VideoCreate):
+    now = datetime.now(timezone.utc).isoformat()
+    video_doc = {
+        "userEmail": email.lower(),
+        "url": video.url,
+        "path": video.path,
+        "name": video.name,
+        "size": video.size,
+        "type": video.type,
+        "title": video.title or video.name,
+        "description": video.description,
+        "sharedWith": [],  # List of shaper IDs
+        "createdAt": now,
+        "updatedAt": now
+    }
+    result = videos_collection.insert_one(video_doc)
+    video_doc["id"] = str(result.inserted_id)
+    if "_id" in video_doc:
+        del video_doc["_id"]
+    return video_doc
+
+@app.get("/api/videos/{email}")
+async def get_user_videos(email: str):
+    videos = list(videos_collection.find({"userEmail": email.lower()}, {"_id": 0}))
+    return {"videos": videos}
+
+@app.get("/api/videos/shared/{shaper_id}")
+async def get_shared_videos(shaper_id: int):
+    """Get videos shared with a specific shaper"""
+    videos = list(videos_collection.find(
+        {"sharedWith": shaper_id},
+        {"_id": 0}
+    ))
+    return {"videos": videos}
+
+@app.post("/api/videos/{email}/share")
+async def share_video(email: str, share: VideoShare):
+    """Share a video with specific shapers"""
+    result = videos_collection.update_one(
+        {"userEmail": email.lower(), "path": share.videoId},
+        {
+            "$addToSet": {"sharedWith": {"$each": share.shaperIds}},
+            "$set": {"updatedAt": datetime.now(timezone.utc).isoformat()}
+        }
+    )
+    if result.modified_count == 0:
+        raise HTTPException(status_code=404, detail="Video not found")
+    return {"success": True, "sharedWith": share.shaperIds}
+
+@app.delete("/api/videos/{email}/{video_path:path}")
+async def delete_video(email: str, video_path: str):
+    result = videos_collection.delete_one({
+        "userEmail": email.lower(),
+        "path": video_path
+    })
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Video not found")
+    return {"success": True}
+
+# ──────────────────────────────────────────────
+# TRANSLATION ENDPOINTS
+# ──────────────────────────────────────────────
 
 @app.get("/api/health")
 async def health():
@@ -58,12 +282,13 @@ async def translate(req: TranslateRequest):
             cached=True
         )
     
-    # Check cache first
+    # Check MongoDB cache first
     cache_key = hashlib.md5(f"{req.text}:{req.target_locale}".encode()).hexdigest()
-    if cache_key in translation_cache:
+    cached = translations_collection.find_one({"cache_key": cache_key}, {"_id": 0})
+    if cached:
         return TranslateResponse(
             original=req.text,
-            translated=translation_cache[cache_key],
+            translated=cached["translated"],
             locale=req.target_locale,
             cached=True
         )
@@ -89,8 +314,15 @@ async def translate(req: TranslateRequest):
         translated = await chat.send_message(user_message)
         translated = translated.strip()
         
-        # Cache the result
-        translation_cache[cache_key] = translated
+        # Store in MongoDB for persistence
+        translations_collection.insert_one({
+            "cache_key": cache_key,
+            "original": req.text,
+            "translated": translated,
+            "locale": req.target_locale,
+            "context": req.context,
+            "createdAt": datetime.now(timezone.utc).isoformat()
+        })
         
         return TranslateResponse(
             original=req.text,
