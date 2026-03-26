@@ -604,11 +604,22 @@ function AuthModal({ mode: init, onClose, onAuth }) {
 // ─────────────────────────────────────────────
 function EditModal({ listing, categories, onSave, onClose }) {
   const { tr } = useContext(Ctx);
-  const [f, setF] = useState({ ...listing, category: listing.category.join("|"), tags: listing.tags.join(",") });
+  const [f, setF] = useState({ ...listing, category: [...listing.category], tags: listing.tags.join(",") });
   const h = (k, v) => setF(p => ({ ...p, [k]: v }));
   const ref = useRef();
   const pickLogo = e => { const file = e.target.files[0]; if (!file) return; const r = new FileReader(); r.onload = ev => h("logoUrl", ev.target.result); r.readAsDataURL(file); };
-  const sub = e => { e.preventDefault(); onSave({ ...f, category: f.category.split("|").map(s => s.trim()), tags: f.tags.split(",").map(s => s.trim()) }); };
+  const toggleCategory = (id) => {
+    setF(p => {
+      const current = p.category || [];
+      if (current.includes(id)) {
+        return { ...p, category: current.filter(c => c !== id) };
+      } else if (current.length < 3) {
+        return { ...p, category: [...current, id] };
+      }
+      return p;
+    });
+  };
+  const sub = e => { e.preventDefault(); onSave({ ...f, category: f.category, tags: f.tags.split(",").map(s => s.trim()) }); };
   return (
     <div className="ov" onClick={e => e.target === e.currentTarget && onClose()}>
       <div className="modal wide">
@@ -624,8 +635,29 @@ function EditModal({ listing, categories, onSave, onClose }) {
             </div>
           </div>
           <div className="fg"><label className="fl">Tagline</label><input className="fi" value={f.tagline} onChange={e => h("tagline", e.target.value)} /></div>
+          <div className="fg">
+            <label className="fl">Speciality (select up to 3)</label>
+            <div style={{display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(130px, 1fr))", gap:"8px", marginTop:"8px"}}>
+              {categories.filter(c => c.id !== "all").map(c => {
+                const selected = (f.category || []).includes(c.id);
+                const atMax = (f.category || []).length >= 3 && !selected;
+                return (
+                  <label key={c.id} style={{display:"flex", alignItems:"center", gap:"8px", cursor: atMax ? "not-allowed" : "pointer", opacity: atMax ? 0.5 : 1, padding:"8px 12px", background: selected ? "var(--gl)" : "var(--bg)", border: selected ? "1px solid var(--gb)" : "1px solid var(--bd)", borderRadius:"8px", fontSize:"13px", transition:"all 0.15s"}}>
+                    <input 
+                      type="checkbox" 
+                      checked={selected}
+                      disabled={atMax}
+                      onChange={() => toggleCategory(c.id)}
+                      style={{cursor: atMax ? "not-allowed" : "pointer", accentColor:"var(--g)"}}
+                    />
+                    <span style={{color: selected ? "var(--g)" : "var(--tx)"}}>{c.label}</span>
+                  </label>
+                );
+              })}
+            </div>
+            {(f.category || []).length > 0 && <div style={{fontSize:"12px", color: (f.category || []).length >= 3 ? "var(--txm)" : "var(--g)", marginTop:"8px"}}>✓ {(f.category || []).length}/3 selected</div>}
+          </div>
           <div className="f2">
-            <div className="fg"><label className="fl">Category IDs (pipe-separated)</label><input className="fi" value={f.category} onChange={e => h("category", e.target.value)} placeholder="shortboards|glassers" /></div>
             <div className="fg"><label className="fl">{tr("listing.country")}</label>
               <select className="fs" value={f.country} onChange={e => h("country", e.target.value)}>
                 <option value="">Select…</option>
@@ -1513,7 +1545,9 @@ function SubmitPage() {
   const h = (k, v) => setF(p => ({ ...p, [k]: v }));
   const toggleCat = id => setF(p => ({
     ...p,
-    categories: p.categories.includes(id) ? p.categories.filter(c=>c!==id) : [...p.categories, id],
+    categories: p.categories.includes(id) 
+      ? p.categories.filter(c=>c!==id) 
+      : p.categories.length < 3 ? [...p.categories, id] : p.categories,
   }));
 
   const canNext = [
@@ -1616,7 +1650,7 @@ function SubmitPage() {
                 </button>
               ))}
             </div>
-            {f.categories.length > 0 && <div style={{ fontSize:12, color:"var(--g)", marginTop:8 }}>✓ {f.categories.length} selected</div>}
+            {f.categories.length > 0 && <div style={{ fontSize:12, color: f.categories.length >= 3 ? "var(--txm)" : "var(--g)", marginTop:8 }}>✓ {f.categories.length}/3 selected {f.categories.length >= 3 && "(max)"}</div>}
           </div>
           <div className="sub-nav">
             <span className="sub-progress">{tr("sub.step1of3")}</span>
