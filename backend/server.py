@@ -1,10 +1,10 @@
 import os
 import hashlib
 from datetime import datetime, timezone
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Body
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import Optional, List
+from typing import Optional, List, Any, Dict
 from dotenv import load_dotenv
 from pymongo import MongoClient
 
@@ -31,6 +31,7 @@ users_collection = db["users"]
 videos_collection = db["videos"]
 translations_collection = db["translations"]
 bookmarks_collection = db["bookmarks"]
+listings_collection = db["listings"]
 
 LANGUAGE_NAMES = {
     "pt-BR": "Brazilian Portuguese",
@@ -198,6 +199,94 @@ async def toggle_bookmark(email: str, bookmark: BookmarkUpdate):
         })
     
     return {"savedIds": saved_ids, "action": action}
+
+# ──────────────────────────────────────────────
+# LISTINGS ENDPOINTS
+# ──────────────────────────────────────────────
+
+@app.get("/api/listings")
+async def get_listings():
+    """Get all listings from the database"""
+    listings = list(listings_collection.find({}, {"_id": 0}))
+    return {"listings": listings}
+
+@app.post("/api/listings")
+async def create_listing(listing: Dict[str, Any] = Body(...)):
+    """Create a single listing"""
+    now = datetime.now(timezone.utc).isoformat()
+    listing["createdAt"] = now
+    listing["updatedAt"] = now
+    
+    # Check if listing with same ID exists
+    existing = listings_collection.find_one({"id": listing.get("id")})
+    if existing:
+        # Update existing
+        listings_collection.update_one(
+            {"id": listing.get("id")},
+            {"$set": {**listing, "updatedAt": now}}
+        )
+    else:
+        listings_collection.insert_one(listing)
+    
+    # Remove _id before returning
+    listing.pop("_id", None)
+    return {"success": True, "listing": listing}
+
+@app.post("/api/listings/bulk")
+async def bulk_upsert_listings(data: Dict[str, Any] = Body(...)):
+    """Bulk upsert listings (for CSV import)"""
+    listings = data.get("listings", [])
+    if not listings:
+        return {"success": False, "message": "No listings provided", "count": 0}
+    
+    now = datetime.now(timezone.utc).isoformat()
+    inserted = 0
+    updated = 0
+    
+    for listing in listings:
+        listing["updatedAt"] = now
+        existing = listings_collection.find_one({"id": listing.get("id")})
+        if existing:
+            listings_collection.update_one(
+                {"id": listing.get("id")},
+                {"$set": listing}
+            )
+            updated += 1
+        else:
+            listing["createdAt"] = now
+            listings_collection.insert_one(listing)
+            inserted += 1
+    
+    return {
+        "success": True, 
+        "inserted": inserted, 
+        "updated": updated, 
+        "total": inserted + updated
+    }
+
+@app.put("/api/listings/{listing_id}")
+async def update_listing(listing_id: int, listing: Dict[str, Any] = Body(...)):
+    """Update a specific listing"""
+    now = datetime.now(timezone.utc).isoformat()
+    listing["updatedAt"] = now
+    
+    result = listings_collection.update_one(
+        {"id": listing_id},
+        {"$set": listing}
+    )
+    
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Listing not found")
+    
+    return {"success": True}
+
+@app.delete("/api/listings/{listing_id}")
+async def delete_listing(listing_id: int):
+    """Delete a listing"""
+    result = listings_collection.delete_one({"id": listing_id})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Listing not found")
+    return {"success": True}
 
 # ──────────────────────────────────────────────
 # VIDEO ENDPOINTS

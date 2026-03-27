@@ -504,9 +504,13 @@ function LogoImg({ listing, size = "sm" }) {
   const d = size === "lg" ? 68 : 44;
   const rad = size === "lg" ? 14 : 10;
   const fnt = size === "lg" ? 34 : 22;
-  const wrap = { width: d, height: d, borderRadius: rad, overflow: "hidden", flexShrink: 0, background: listing.logoColor + "22", display: "flex", alignItems: "center", justifyContent: "center" };
-  if (listing.logoUrl) return <div style={wrap}><img src={listing.logoUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "contain" }} onError={e => e.target.style.display = "none"} /></div>;
-  return <div style={{ ...wrap, fontSize: fnt }}>{listing.logo}</div>;
+  const logoColor = listing.logoColor || "#8B6914";
+  const logo = listing.logo || "🏄";
+  const logoUrl = listing.logoUrl || "";
+  
+  const wrap = { width: d, height: d, borderRadius: rad, overflow: "hidden", flexShrink: 0, background: logoColor + "22", display: "flex", alignItems: "center", justifyContent: "center" };
+  if (logoUrl) return <div style={wrap}><img src={logoUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "contain" }} onError={e => e.target.style.display = "none"} /></div>;
+  return <div style={{ ...wrap, fontSize: fnt }}>{logo}</div>;
 }
 
 // ─────────────────────────────────────────────
@@ -852,10 +856,13 @@ function BookmarkIcon({ saved, size = 20 }) {
 // ─────────────────────────────────────────────
 function Card({ listing, onClick }) {
   const { tr, locale } = useContext(Ctx);
-  const translatedTagline = useTranslatedText(listing.tagline, locale);
+  const translatedTagline = useTranslatedText(listing.tagline || "", locale);
+  const tags = listing.tags || [];
+  const featured = listing.featured || false;
+  
   return (
-    <div className={`card ${listing.featured ? "feat" : ""}`} onClick={() => onClick(listing)}>
-      {listing.featured && <span className="fbadge">{tr("listing.featured")}</span>}
+    <div className={`card ${featured ? "feat" : ""}`} onClick={() => onClick(listing)}>
+      {featured && <span className="fbadge">{tr("listing.featured")}</span>}
       <div className="ctop">
         <LogoImg listing={listing} />
         <div className="cinfo">
@@ -866,7 +873,7 @@ function Card({ listing, onClick }) {
       <div className="cfoot">
         <span className="ptyp">{listing.type}</span>
         {listing.country && <span className="preg">🌍 {listing.country}</span>}
-        {listing.tags.slice(0, 1).map(t => <span key={t} className="ptag">{t}</span>)}
+        {tags.slice(0, 1).map(t => <span key={t} className="ptag">{t}</span>)}
       </div>
     </div>
   );
@@ -886,7 +893,7 @@ function Sidebar({ listings, categories, activeCat, setCat, search, setSearch, o
   // Count per category
   const countFor = id => id === "all"
     ? listings.length
-    : listings.filter(l => l.category.includes(id)).length;
+    : listings.filter(l => (l.category || []).includes(id)).length;
 
   return (
     <aside className="sidebar">
@@ -2174,10 +2181,10 @@ function DataManagement() {
   const [imported, setImported] = useState({});
   const fileRefs = { shapers: useRef(), boards: useRef(), knowledge: useRef(), reviews: useRef() };
 
-  const handleFile = (dbKey, file) => {
+  const handleFile = async (dbKey, file) => {
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = e => {
+    reader.onload = async e => {
       const text = e.target.result;
       let updated = listings; let count = 0;
       try {
@@ -2185,8 +2192,23 @@ function DataManagement() {
         else if (dbKey==="boards") { updated=parseBoardsCSV(text,listings); count=text.trim().split("\n").length-1; }
         else if (dbKey==="knowledge") { updated=parseKnowledgeCSV(text,listings); count=text.trim().split("\n").length-1; }
         else if (dbKey==="reviews") { updated=parseReviewsCSV(text,listings); count=text.trim().split("\n").length-1; }
+        
+        // Save to backend
+        try {
+          const res = await fetch("/api/listings/bulk", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ listings: updated })
+          });
+          if (!res.ok) throw new Error("Failed to save to server");
+          const data = await res.json();
+          showToast(`${dbKey} updated — ${data.inserted} new, ${data.updated} updated`);
+        } catch (err) {
+          console.error("Failed to save to backend:", err);
+          showToast(`${dbKey} updated locally — ${count} row${count!==1?"s":""} (server sync failed)`);
+        }
+        
         setListings(updated); setImported(p=>({...p,[dbKey]:count}));
-        showToast(`${dbKey} updated — ${count} row${count!==1?"s":""} imported`);
       } catch(err) { showToast("Error reading file — check the format"); }
     };
     reader.readAsText(file);
@@ -2292,12 +2314,66 @@ function AdminPage() {
   const [liveFilters, setLiveFilters] = useState({ type: "", country: "", featured: "", premium: "", category: "" });
   const [showLiveFilters, setShowLiveFilters] = useState(false);
 
-  const approve = item => { setListings(p=>[...p,{...item,approved:true}]); setPending(p=>p.filter(x=>x.id!==item.id)); showToast(`"${item.name}" approved!`); };
+  const approve = async item => { 
+    const newListing = {...item, approved:true};
+    setListings(p=>[...p, newListing]); 
+    setPending(p=>p.filter(x=>x.id!==item.id)); 
+    showToast(`"${item.name}" approved!`);
+    // Sync to backend
+    try {
+      await fetch("/api/listings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(newListing)
+      });
+    } catch (err) { console.error("Failed to sync approval:", err); }
+  };
   const reject  = item => { setPending(p=>p.filter(x=>x.id!==item.id)); showToast(`"${item.name}" rejected.`); };
-  const toggleF = id   => setListings(p=>p.map(l=>l.id===id?{...l,featured:!l.featured}:l));
-  const toggleP = id   => setListings(p=>p.map(l=>l.id===id?{...l,premium:!l.premium}:l));
-  const save    = u    => { setListings(p=>p.map(l=>l.id===u.id?u:l)); setEdit(null); showToast("Updated!"); };
-  const del     = id   => { if (window.confirm("Delete this listing?")) { setListings(p=>p.filter(l=>l.id!==id)); showToast("Deleted."); } };
+  const toggleF = async id => {
+    const listing = listings.find(l => l.id === id);
+    const updated = {...listing, featured: !listing.featured};
+    setListings(p=>p.map(l=>l.id===id?updated:l));
+    try {
+      await fetch(`/api/listings/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(updated)
+      });
+    } catch (err) { console.error("Failed to sync featured toggle:", err); }
+  };
+  const toggleP = async id => {
+    const listing = listings.find(l => l.id === id);
+    const updated = {...listing, premium: !listing.premium};
+    setListings(p=>p.map(l=>l.id===id?updated:l));
+    try {
+      await fetch(`/api/listings/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(updated)
+      });
+    } catch (err) { console.error("Failed to sync premium toggle:", err); }
+  };
+  const save = async u => { 
+    setListings(p=>p.map(l=>l.id===u.id?u:l)); 
+    setEdit(null); 
+    showToast("Updated!");
+    try {
+      await fetch(`/api/listings/${u.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(u)
+      });
+    } catch (err) { console.error("Failed to sync update:", err); }
+  };
+  const del = async id => { 
+    if (window.confirm("Delete this listing?")) { 
+      setListings(p=>p.filter(l=>l.id!==id)); 
+      showToast("Deleted.");
+      try {
+        await fetch(`/api/listings/${id}`, { method: "DELETE" });
+      } catch (err) { console.error("Failed to sync deletion:", err); }
+    } 
+  };
 
   // Filter live listings
   const filteredListings = listings.filter(l => {
@@ -2321,9 +2397,19 @@ function AdminPage() {
   const clearLiveFilters = () => setLiveFilters({ type: "", country: "", featured: "", premium: "", category: "" });
   const hasActiveFilters = Object.values(liveFilters).some(v => v !== "");
 
-  const approveReview = rv => {
-    setListings(p=>p.map(l=>l.id===rv.listingId?{...l,reviews:[...(l.reviews||[]),{...rv,approved:true}]}:l));
-    setPendingReviews(p=>p.filter(r=>r.id!==rv.id)); showToast("Review approved!");
+  const approveReview = async rv => {
+    const listing = listings.find(l => l.id === rv.listingId);
+    const updatedListing = {...listing, reviews: [...(listing.reviews||[]), {...rv, approved:true}]};
+    setListings(p=>p.map(l=>l.id===rv.listingId?updatedListing:l));
+    setPendingReviews(p=>p.filter(r=>r.id!==rv.id)); 
+    showToast("Review approved!");
+    try {
+      await fetch(`/api/listings/${rv.listingId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(updatedListing)
+      });
+    } catch (err) { console.error("Failed to sync review approval:", err); }
   };
   const rejectReview = rv => { setPendingReviews(p=>p.filter(r=>r.id!==rv.id)); showToast("Review rejected."); };
 
@@ -2613,12 +2699,8 @@ export default function App() {
       return [];
     } catch { return []; }
   });
-  const [listings,   setListings]   = useState(() => {
-    try {
-      const saved = localStorage.getItem("ss_listings");
-      return saved ? JSON.parse(saved) : SAMPLE_LISTINGS;
-    } catch { return SAMPLE_LISTINGS; }
-  });
+  const [listings,   setListings]   = useState(SAMPLE_LISTINGS);
+  const [listingsLoaded, setListingsLoaded] = useState(false);
   const [pending,        setPending]        = useState([]);
   const [pendingReviews, setPendingReviews] = useState([]);
   const [selected,   setSelected]   = useState(null);
@@ -2663,10 +2745,21 @@ export default function App() {
       console.error("Failed to save logo image:", e);
     }
   }, [logoImage]);
-  // Persist listings to localStorage (for featured status, edits, etc.)
+  // Load listings from backend on startup
   useEffect(() => {
-    try { localStorage.setItem("ss_listings", JSON.stringify(listings)); } catch {}
-  }, [listings]);
+    fetch("/api/listings")
+      .then(res => res.json())
+      .then(data => {
+        if (data.listings && data.listings.length > 0) {
+          setListings(data.listings);
+        }
+        setListingsLoaded(true);
+      })
+      .catch(err => {
+        console.error("Failed to load listings:", err);
+        setListingsLoaded(true);
+      });
+  }, []);
 
   // Persist user to localStorage
   useEffect(() => {

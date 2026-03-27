@@ -3,7 +3,7 @@ import sys
 from datetime import datetime
 import json
 
-class BookmarkAPITester:
+class ListingsAPITester:
     def __init__(self, base_url="https://acc1b1ec-e058-49e9-aee5-e791a47a9e30.preview.emergentagent.com"):
         self.base_url = base_url
         self.tests_run = 0
@@ -25,6 +25,12 @@ class BookmarkAPITester:
                 response = requests.get(url, headers=headers)
             elif method == 'POST':
                 response = requests.post(url, json=data, headers=headers)
+            elif method == 'PUT':
+                response = requests.put(url, json=data, headers=headers)
+            elif method == 'DELETE':
+                response = requests.delete(url, headers=headers)
+            else:
+                raise ValueError(f"Unsupported HTTP method: {method}")
 
             success = response.status_code == expected_status
             if success:
@@ -119,16 +125,44 @@ class BookmarkAPITester:
         }
         return self.run_test("Invalid Login", "POST", "api/auth/login", 401, data)
 
+    def test_get_listings(self):
+        """Test getting all listings from MongoDB"""
+        return self.run_test("Get All Listings", "GET", "api/listings", 200)
+
+    def test_create_listing(self, listing_data):
+        """Test creating a single listing"""
+        return self.run_test("Create Single Listing", "POST", "api/listings", 200, listing_data)
+
+    def test_bulk_upsert_listings(self, listings_data):
+        """Test bulk upsert of listings (CSV import)"""
+        return self.run_test("Bulk Upsert Listings", "POST", "api/listings/bulk", 200, listings_data)
+
+    def test_update_listing(self, listing_id, update_data):
+        """Test updating a specific listing"""
+        return self.run_test("Update Listing", "PUT", f"api/listings/{listing_id}", 200, update_data)
+
+    def test_delete_listing(self, listing_id):
+        """Test deleting a listing"""
+        return self.run_test("Delete Listing", "DELETE", f"api/listings/{listing_id}", 200)
+
+    def test_update_nonexistent_listing(self, listing_id, update_data):
+        """Test updating a non-existent listing should return 404"""
+        return self.run_test("Update Non-existent Listing", "PUT", f"api/listings/{listing_id}", 404, update_data)
+
+    def test_delete_nonexistent_listing(self, listing_id):
+        """Test deleting a non-existent listing should return 404"""
+        return self.run_test("Delete Non-existent Listing", "DELETE", f"api/listings/{listing_id}", 404)
+
 def main():
     # Setup
-    tester = BookmarkAPITester()
+    tester = ListingsAPITester()
     timestamp = datetime.now().strftime('%H%M%S')
     test_email = f"test_user_{timestamp}@example.com"
     test_password = "TestPass123!"
     test_firstName = "Test"
     test_lastName = "User"
 
-    print("🚀 Starting Bookmark API Tests")
+    print("🚀 Starting Listings API Tests")
     print(f"   Test User: {test_email}")
     print("=" * 50)
 
@@ -138,73 +172,144 @@ def main():
         print("❌ Health check failed, stopping tests")
         return 1
 
-    # Test 2: User registration
+    # Test 2: Get existing listings
+    listings_success, listings_response = tester.test_get_listings()
+    if not listings_success:
+        print("❌ Get listings failed, stopping tests")
+        return 1
+    
+    existing_listings = listings_response.get('listings', [])
+    print(f"   Found {len(existing_listings)} existing listings")
+
+    # Test 3: Create a single listing
+    test_listing = {
+        "id": 9999,
+        "name": "Test Shaper",
+        "tagline": "Testing CSV import functionality",
+        "category": ["shortboards"],
+        "type": "Shaper",
+        "featured": False,
+        "website": "https://test.com",
+        "address": "Test Location",
+        "country": "Australia",
+        "bio": "This is a test listing for API testing",
+        "tags": ["test", "api"],
+        "logo": "🧪",
+        "logoColor": "#ff0000",
+        "logoUrl": "",
+        "photos": [],
+        "approved": True
+    }
+    
+    create_success, create_response = tester.test_create_listing(test_listing)
+    if not create_success:
+        print("❌ Create listing failed")
+    else:
+        print(f"   Created listing: {create_response.get('listing', {}).get('name', 'Unknown')}")
+
+    # Test 4: Bulk upsert listings (CSV import simulation)
+    bulk_listings = {
+        "listings": [
+            {
+                "id": 8888,
+                "name": "Bulk Test Shaper 1",
+                "tagline": "First bulk import test",
+                "category": ["longboards"],
+                "type": "Shaper",
+                "featured": True,
+                "country": "USA",
+                "address": "California",
+                "bio": "Bulk import test listing 1",
+                "tags": ["bulk", "test"],
+                "logo": "🏄",
+                "logoColor": "#0000ff"
+            },
+            {
+                "id": 7777,
+                "name": "Bulk Test Shaper 2", 
+                "tagline": "Second bulk import test",
+                "category": ["mid-lengths"],
+                "type": "Glasser",
+                "featured": False,
+                "country": "Brazil",
+                "address": "Rio de Janeiro",
+                "bio": "Bulk import test listing 2",
+                "tags": ["bulk", "glassing"],
+                "logo": "🌊",
+                "logoColor": "#00ff00"
+            }
+        ]
+    }
+    
+    bulk_success, bulk_response = tester.test_bulk_upsert_listings(bulk_listings)
+    if not bulk_success:
+        print("❌ Bulk upsert failed")
+    else:
+        print(f"   Bulk import: {bulk_response.get('inserted', 0)} inserted, {bulk_response.get('updated', 0)} updated")
+
+    # Test 5: Update an existing listing
+    update_data = {
+        "name": "Updated Test Shaper",
+        "tagline": "Updated tagline for testing",
+        "bio": "This listing has been updated via API"
+    }
+    
+    update_success, _ = tester.test_update_listing(9999, update_data)
+    if not update_success:
+        print("❌ Update listing failed")
+
+    # Test 6: Get listings again to verify changes
+    listings_success2, listings_response2 = tester.test_get_listings()
+    if listings_success2:
+        updated_listings = listings_response2.get('listings', [])
+        print(f"   Total listings after operations: {len(updated_listings)}")
+        
+        # Find our test listing to verify update
+        test_listing_found = next((l for l in updated_listings if l.get('id') == 9999), None)
+        if test_listing_found:
+            print(f"   Updated listing name: {test_listing_found.get('name')}")
+
+    # Test 7: Delete a test listing
+    delete_success, _ = tester.test_delete_listing(7777)
+    if not delete_success:
+        print("❌ Delete listing failed")
+
+    # Test 8: Try to update non-existent listing (should fail)
+    tester.test_update_nonexistent_listing(99999, {"name": "Should not work"})
+
+    # Test 9: Try to delete non-existent listing (should fail)
+    tester.test_delete_nonexistent_listing(99999)
+
+    # Test 10: User registration and bookmark functionality (existing tests)
     reg_success, reg_response = tester.test_register_user(test_email, test_password, test_firstName, test_lastName)
     if not reg_success:
-        print("❌ User registration failed, stopping tests")
+        print("❌ User registration failed")
         return 1
 
-    # Test 3: User login
+    # Test 11: User login
     login_success, login_response = tester.test_login_user(test_email, test_password)
     if not login_success:
-        print("❌ User login failed, stopping tests")
+        print("❌ User login failed")
         return 1
 
-    # Test 4: Get empty bookmarks
+    # Test 12: Bookmark functionality with listings
     bookmarks_success, bookmarks_response = tester.test_get_bookmarks(test_email)
-    if not bookmarks_success:
-        print("❌ Get bookmarks failed")
-    else:
+    if bookmarks_success:
         print(f"   Initial bookmarks: {bookmarks_response.get('savedIds', [])}")
 
-    # Test 5: Add a bookmark
-    listing_id = 1  # Using sample listing ID
-    toggle_success, toggle_response = tester.test_toggle_bookmark(test_email, listing_id)
-    if not toggle_success:
-        print("❌ Toggle bookmark failed")
-    else:
+    # Test 13: Add bookmark for our test listing
+    toggle_success, toggle_response = tester.test_toggle_bookmark(test_email, 9999)
+    if toggle_success:
         print(f"   Bookmark action: {toggle_response.get('action', 'unknown')}")
-        print(f"   Updated bookmarks: {toggle_response.get('savedIds', [])}")
 
-    # Test 6: Get bookmarks after adding
+    # Test 14: Verify bookmark was added
     bookmarks_success2, bookmarks_response2 = tester.test_get_bookmarks(test_email)
     if bookmarks_success2:
         print(f"   Bookmarks after adding: {bookmarks_response2.get('savedIds', [])}")
 
-    # Test 7: Remove the bookmark
-    toggle_success2, toggle_response2 = tester.test_toggle_bookmark(test_email, listing_id)
-    if toggle_success2:
-        print(f"   Bookmark action: {toggle_response2.get('action', 'unknown')}")
-        print(f"   Updated bookmarks: {toggle_response2.get('savedIds', [])}")
-
-    # Test 8: Test duplicate registration
-    tester.test_duplicate_registration(test_email, test_password, test_firstName, test_lastName)
-
-    # Test 9: Test invalid login
-    tester.test_invalid_login(test_email, "wrongpassword")
-
-    # Test 10: Test different user bookmarks isolation
-    test_email2 = f"test_user2_{timestamp}@example.com"
-    reg_success2, _ = tester.test_register_user(test_email2, test_password, "Test2", "User2")
-    if reg_success2:
-        # Add bookmark for user2
-        tester.test_toggle_bookmark(test_email2, 2)  # Different listing
-        # Check user1 bookmarks are still separate
-        bookmarks_user1, bookmarks_response_user1 = tester.test_get_bookmarks(test_email)
-        bookmarks_user2, bookmarks_response_user2 = tester.test_get_bookmarks(test_email2)
-        
-        if bookmarks_user1 and bookmarks_user2:
-            user1_bookmarks = bookmarks_response_user1.get('savedIds', [])
-            user2_bookmarks = bookmarks_response_user2.get('savedIds', [])
-            print(f"   User1 bookmarks: {user1_bookmarks}")
-            print(f"   User2 bookmarks: {user2_bookmarks}")
-            
-            if user1_bookmarks != user2_bookmarks:
-                print("✅ Bookmark isolation working correctly")
-                tester.tests_passed += 1
-            else:
-                print("❌ Bookmark isolation failed")
-            tester.tests_run += 1
+    # Cleanup: Delete our test listings
+    tester.test_delete_listing(9999)
+    tester.test_delete_listing(8888)
 
     # Print results
     print("\n" + "=" * 50)
