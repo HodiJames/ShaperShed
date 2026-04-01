@@ -11,4 +11,4 @@ COPY backend/ ./backend/
 
 ENV PORT=8001
 
-CMD /bin/sh -c "uvicorn backend.server:app --host 0.0.0.0 --port ${PORT}"
+CMD /bin/sh -c "uvicorn backend.test_server:app --host 0.0.0.0 --port ${PORT}"
