@@ -386,22 +386,30 @@ async def translate(req: TranslateRequest):
     target_lang = LANGUAGE_NAMES.get(req.target_locale, req.target_locale)
     
     try:
-        from emergentintegrations.llm.chat import LlmChat, UserMessage
+        from openai import OpenAI
         
-        api_key = os.environ.get("EMERGENT_LLM_KEY")
+        api_key = os.environ.get("OPENAI_API_KEY", "")
         
-        chat = LlmChat(
-            api_key=api_key,
-            session_id=f"translate-{cache_key}",
-            system_message=f"You are a professional translator. Translate the given text to {target_lang}. Only respond with the translation, nothing else. Preserve any formatting, line breaks, and special characters. Keep proper nouns (names of people, places, businesses) unchanged."
-        ).with_model("openai", "gpt-4.1-mini")
+        # If no API key, return original text
+        if not api_key:
+            return TranslateResponse(
+                original=req.text,
+                translated=req.text,
+                locale=req.target_locale,
+                cached=False
+            )
         
-        user_message = UserMessage(
-            text=f"Translate this text from a {req.context}:\n\n{req.text}"
+        client = OpenAI(api_key=api_key)
+        
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": f"You are a professional translator. Translate the given text to {target_lang}. Only respond with the translation, nothing else. Preserve any formatting, line breaks, and special characters. Keep proper nouns (names of people, places, businesses) unchanged."},
+                {"role": "user", "content": f"Translate this text from a {req.context}:\n\n{req.text}"}
+            ]
         )
         
-        translated = await chat.send_message(user_message)
-        translated = translated.strip()
+        translated = response.choices[0].message.content.strip()
         
         # Store in MongoDB for persistence
         translations_collection.insert_one({
