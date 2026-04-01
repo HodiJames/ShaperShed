@@ -32,6 +32,7 @@ videos_collection = db["videos"]
 translations_collection = db["translations"]
 bookmarks_collection = db["bookmarks"]
 listings_collection = db["listings"]
+questions_collection = db["questions"]
 
 LANGUAGE_NAMES = {
     "pt-BR": "Brazilian Portuguese",
@@ -286,6 +287,44 @@ async def delete_listing(listing_id: int):
     result = listings_collection.delete_one({"id": listing_id})
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Listing not found")
+    return {"success": True}
+
+# ──────────────────────────────────────────────
+# QUESTIONS ENDPOINTS
+# ──────────────────────────────────────────────
+
+@app.get("/api/questions")
+async def get_all_questions():
+    """Get all questions"""
+    questions = list(questions_collection.find({}, {"_id": 0}))
+    return {"questions": questions}
+
+@app.get("/api/questions/shaper/{shaper_id}")
+async def get_shaper_questions(shaper_id: int):
+    """Get questions for a specific shaper"""
+    questions = list(questions_collection.find({"shaperId": shaper_id}, {"_id": 0}))
+    return {"questions": questions}
+
+@app.post("/api/questions")
+async def create_question(question: Dict[str, Any] = Body(...)):
+    """Create a new question"""
+    now = datetime.now(timezone.utc).isoformat()
+    question["createdAt"] = now
+    question["id"] = int(datetime.now(timezone.utc).timestamp() * 1000)
+    questions_collection.insert_one(question)
+    question.pop("_id", None)
+    return {"success": True, "question": question}
+
+@app.put("/api/questions/{question_id}/answer")
+async def answer_question(question_id: int, answer: Dict[str, Any] = Body(...)):
+    """Answer a question"""
+    now = datetime.now(timezone.utc).isoformat()
+    result = questions_collection.update_one(
+        {"id": question_id},
+        {"$set": {"answer": answer.get("answer"), "answeredAt": now}}
+    )
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Question not found")
     return {"success": True}
 
 # ──────────────────────────────────────────────

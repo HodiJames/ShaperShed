@@ -1238,22 +1238,50 @@ const SAMPLE_QUESTIONS = [
 
 function AskAShaper({ listing }) {
   const { tr } = useContext(Ctx);
-  const [questions, setQuestions] = useState(listing.id === 1 ? SAMPLE_QUESTIONS : []);
+  const [questions, setQuestions] = useState([]);
   const [text, setText]     = useState("");
   const [name, setName]     = useState("");
   const [submitted, setSubmitted] = useState(false);
+
+  // Load questions from backend
+  useEffect(() => {
+    fetch(`${API_BASE}/api/questions/shaper/${listing.id}`)
+      .then(res => res.json())
+      .then(data => setQuestions(data.questions || []))
+      .catch(err => console.error("Failed to load questions:", err));
+  }, [listing.id]);
 
   const totalQ     = questions.length;
   const pct        = Math.min((totalQ / THRESHOLD) * 100, 100);
   const nearTarget = totalQ >= THRESHOLD * 0.7;
   const atTarget   = totalQ >= THRESHOLD;
 
-  const submit = () => {
+  const submit = async () => {
     if (!text.trim()) return;
-    const newQ = { id: Date.now(), text: text.trim(), votes: 0, votedByMe: false, name: name.trim() || "Anonymous", date: "Just now" };
-    setQuestions(p => [newQ, ...p]);
-    setText(""); setName(""); setSubmitted(true);
-    setTimeout(() => setSubmitted(false), 3000);
+    const newQ = { 
+      shaperId: listing.id,
+      shaperName: listing.name,
+      text: text.trim(), 
+      votes: 0, 
+      name: name.trim() || "Anonymous", 
+      date: "Just now" 
+    };
+    
+    try {
+      const res = await fetch(`${API_BASE}/api/questions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(newQ)
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setQuestions(p => [data.question, ...p]);
+        setText(""); setName(""); setSubmitted(true);
+        setTimeout(() => setSubmitted(false), 3000);
+      }
+    } catch (err) {
+      console.error("Failed to submit question:", err);
+    }
   };
 
   const vote = id => {
