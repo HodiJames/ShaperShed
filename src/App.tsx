@@ -548,7 +548,7 @@ function AuthModal({ mode: init, onClose, onAuth }) {
     setError("");
     
     try {
-      const endpoint = mode === "in" ? "/api/auth/login" : "/api/auth/register";
+      const endpoint = mode === "in" ? `${API_BASE}/api/auth/login` : `${API_BASE}/api/auth/register`;
       const body = mode === "in" 
         ? { email: f.email, password: f.pw }
         : { email: f.email, password: f.pw, firstName: f.firstName, lastName: f.lastName, heard: f.heard, lookingFor: f.interest };
@@ -2211,7 +2211,7 @@ function DataManagement() {
         // Save to backend
         console.log("[CSV Upload] Saving to backend, listings:", updated.length);
         try {
-          const res = await fetch(`${API_BASE}/api/listings/bulk", {
+          const res = await fetch(`${API_BASE}/api/listings/bulk`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ listings: updated })
@@ -2342,7 +2342,7 @@ function AdminPage() {
     showToast(`"${item.name}" approved!`);
     // Sync to backend
     try {
-      await fetch(`${API_BASE}/api/listings", {
+      await fetch(`${API_BASE}/api/listings`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(newListing)
@@ -2768,7 +2768,7 @@ export default function App() {
   }, [logoImage]);
   // Load listings from backend on startup
   useEffect(() => {
-    fetch(`${API_BASE}/api/listings")
+    fetch(`${API_BASE}/api/listings`)
       .then(res => res.json())
       .then(data => {
         if (data.listings && data.listings.length > 0) {
