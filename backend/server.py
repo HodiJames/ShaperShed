@@ -834,7 +834,7 @@ async def delete_video(email: str, video_path: str):
 
 @app.get("/api/health")
 async def health():
-    return {"status": "ok"}
+    return {"status": "ok", "version": "2026-04-01-v2"}
 
 @app.get("/api/debug")
 async def debug_check():
