@@ -23,12 +23,12 @@ export function getFirebaseStorage() {
   return getStorage(app);
 }
 
-// Upload video file with progress tracking
-export async function uploadVideo(file, userId, onProgress) {
+// Upload image file with progress tracking
+export async function uploadImage(file, folder, onProgress) {
   const storage = getFirebaseStorage();
   const timestamp = Date.now();
   const safeName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
-  const filePath = `videos/${userId}/${timestamp}_${safeName}`;
+  const filePath = `${folder}/${timestamp}_${safeName}`;
   const fileRef = ref(storage, filePath);
   
   return new Promise((resolve, reject) => {
@@ -62,12 +62,20 @@ export async function uploadVideo(file, userId, onProgress) {
   });
 }
 
-// Delete video from storage
-export async function deleteVideo(filePath) {
+// Upload video file with progress tracking
+export async function uploadVideo(file, userId, onProgress) {
+  return uploadImage(file, `videos/${userId}`, onProgress);
+}
+
+// Delete file from storage
+export async function deleteFile(filePath) {
   const storage = getFirebaseStorage();
   const fileRef = ref(storage, filePath);
   await deleteObject(fileRef);
 }
+
+// Alias for backward compatibility
+export const deleteVideo = deleteFile;
 
 // Generate a shareable link (the download URL is already shareable)
 export function generateShareableLink(videoUrl, videoId) {
