@@ -824,6 +824,194 @@ function EditModal({ listing, categories, onSave, onClose }) {
 }
 
 // ─────────────────────────────────────────────
+// CLAIM LISTING MODAL
+// ─────────────────────────────────────────────
+function ClaimModal({ listing, onClose, onSuccess }) {
+  const { user, showToast } = useContext(Ctx);
+  const [form, setForm] = useState({
+    name: user?.name || "",
+    email: user?.email || "",
+    phone: "",
+    message: ""
+  });
+  const [loading, setLoading] = useState(false);
+
+  const submit = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/claims`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          listingId: listing.id,
+          listingName: listing.name,
+          ...form
+        })
+      });
+      if (res.ok) {
+        onSuccess();
+      } else {
+        showToast("Failed to submit claim. Please try again.");
+      }
+    } catch (err) {
+      showToast("Error submitting claim.");
+    }
+    setLoading(false);
+  };
+
+  return (
+    <div className="ov" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="modal" style={{maxWidth:"480px"}}>
+        <button className="mclose" onClick={onClose}>✕</button>
+        <h2>Claim {listing.name}</h2>
+        <p style={{color:"var(--txm)", marginBottom:"16px"}}>Tell us about yourself and we'll verify your connection to this business.</p>
+        <form onSubmit={submit}>
+          <div className="fg"><label className="fl">Your Name *</label><input className="fi" required value={form.name} onChange={e => setForm(p => ({...p, name: e.target.value}))} /></div>
+          <div className="fg"><label className="fl">Email *</label><input className="fi" type="email" required value={form.email} onChange={e => setForm(p => ({...p, email: e.target.value}))} /></div>
+          <div className="fg"><label className="fl">Phone (optional)</label><input className="fi" value={form.phone} onChange={e => setForm(p => ({...p, phone: e.target.value}))} /></div>
+          <div className="fg"><label className="fl">Tell us about your role</label><textarea className="ft" rows={3} value={form.message} onChange={e => setForm(p => ({...p, message: e.target.value}))} placeholder="e.g., I'm the owner/shaper at this business..."></textarea></div>
+          <button type="submit" className="btn bp" style={{width:"100%"}} disabled={loading}>{loading ? "Submitting..." : "Submit Claim"}</button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────
+// PREMIUM UPGRADE MODAL
+// ─────────────────────────────────────────────
+function PremiumModal({ listing, onClose }) {
+  const { user, showToast } = useContext(Ctx);
+  const [loading, setLoading] = useState(false);
+  const [trialStarted, setTrialStarted] = useState(false);
+
+  const startTrial = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/premium/start-trial`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ listingId: listing.id, email: user.email })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setTrialStarted(true);
+        showToast("Trial started! Enjoy 7 days of premium features.");
+      } else {
+        const err = await res.json();
+        showToast(err.detail || "Failed to start trial.");
+      }
+    } catch (err) {
+      showToast("Error starting trial.");
+    }
+    setLoading(false);
+  };
+
+  const startCheckout = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/premium/checkout`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          listingId: listing.id,
+          email: user.email,
+          originUrl: window.location.origin
+        })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        window.location.href = data.url;
+      } else {
+        showToast("Failed to start checkout.");
+      }
+    } catch (err) {
+      showToast("Error starting checkout.");
+    }
+    setLoading(false);
+  };
+
+  if (trialStarted) {
+    return (
+      <div className="ov" onClick={e => e.target === e.currentTarget && onClose()}>
+        <div className="modal" style={{maxWidth:"500px", textAlign:"center"}}>
+          <div style={{fontSize:"48px", marginBottom:"16px"}}>🎉</div>
+          <h2>Welcome to Premium!</h2>
+          <p style={{color:"var(--txm)", marginBottom:"24px"}}>Your 7-day trial has started. Explore all the premium features and make your listing shine!</p>
+          <button className="btn bp" onClick={() => window.location.reload()}>Start Editing My Profile</button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="ov" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="modal" style={{maxWidth:"560px"}}>
+        <button className="mclose" onClick={onClose}>✕</button>
+        <div style={{textAlign:"center", marginBottom:"24px"}}>
+          <div style={{fontSize:"40px", marginBottom:"8px"}}>💎</div>
+          <h2 style={{margin:"0 0 4px 0"}}>Shaper Shed Premium</h2>
+          <p style={{color:"var(--txm)", margin:0}}>Showcase your craft to surfers worldwide</p>
+        </div>
+
+        <div style={{background:"var(--bg2)", borderRadius:"12px", padding:"20px", marginBottom:"20px"}}>
+          <div style={{display:"flex", alignItems:"baseline", justifyContent:"center", gap:"4px", marginBottom:"16px"}}>
+            <span style={{fontSize:"36px", fontWeight:"700"}}>$39</span>
+            <span style={{color:"var(--txm)"}}>/ month</span>
+          </div>
+          
+          <div style={{display:"flex", flexDirection:"column", gap:"12px"}}>
+            <div style={{display:"flex", gap:"12px", alignItems:"flex-start"}}>
+              <span style={{fontSize:"20px"}}>🎬</span>
+              <div>
+                <div style={{fontWeight:"600"}}>Watch This Shaper at Work</div>
+                <div style={{fontSize:"13px", color:"var(--txm)"}}>Link YouTube videos of you shaping and talking about your craft</div>
+              </div>
+            </div>
+            <div style={{display:"flex", gap:"12px", alignItems:"flex-start"}}>
+              <span style={{fontSize:"20px"}}>📚</span>
+              <div>
+                <div style={{fontWeight:"600"}}>Shaping Knowledge</div>
+                <div style={{fontSize:"13px", color:"var(--txm)"}}>Share educational videos about board design features</div>
+              </div>
+            </div>
+            <div style={{display:"flex", gap:"12px", alignItems:"flex-start"}}>
+              <span style={{fontSize:"20px"}}>🏄</span>
+              <div>
+                <div style={{fontWeight:"600"}}>Board Portfolio</div>
+                <div style={{fontSize:"13px", color:"var(--txm)"}}>Showcase your boards with photos, specs, and links to your shop</div>
+              </div>
+            </div>
+            <div style={{display:"flex", gap:"12px", alignItems:"flex-start"}}>
+              <span style={{fontSize:"20px"}}>✨</span>
+              <div>
+                <div style={{fontWeight:"600"}}>Premium Badge</div>
+                <div style={{fontSize:"13px", color:"var(--txm)"}}>Stand out in search with the Premium Shaper badge</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <button 
+          className="btn" 
+          style={{width:"100%", background:"#8b5cf6", color:"#fff", border:"none", marginBottom:"12px", padding:"14px"}}
+          onClick={startTrial}
+          disabled={loading}
+        >
+          {loading ? "Starting..." : "Start 7-Day Free Trial"}
+        </button>
+        
+        <p style={{textAlign:"center", fontSize:"12px", color:"var(--txm)", margin:0}}>
+          No credit card required for trial. After 7 days, subscribe for $39/month. Cancel anytime.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+
+// ─────────────────────────────────────────────
 // CATEGORY MANAGER MODAL
 // ─────────────────────────────────────────────
 function CatManagerModal({ categories, onSave, onClose }) {
@@ -1543,9 +1731,13 @@ function PremiumLock({ title, description, features }) {
 function ListingPage({ listing }) {
   const { setPage, setCat, user, savedIds, toggleSave, showToast, setModal, categories, setPendingReviews, tr, locale } = useContext(Ctx);
   const saved = savedIds.includes(listing.id);
+  const [showClaimModal, setShowClaimModal] = useState(false);
+  const [showPremiumModal, setShowPremiumModal] = useState(false);
   const bm = () => { if (!user) { setModal("in"); return; } toggleSave(listing.id); showToast(saved ? "Removed from saved" : "Saved!"); };
   const isPremium  = listing.premium;
   const hasBoards  = isPremium && listing.boards?.length > 0;
+  const isClaimed = listing.claimed;
+  const isOwner = user && listing.ownerEmail === user.email;
 
   // Translate dynamic content
   const translatedTagline = useTranslatedText(listing.tagline, locale);
@@ -1594,6 +1786,39 @@ function ListingPage({ listing }) {
           </div>
         </div>
       </div>
+
+      {/* Claim / Premium Upgrade Section */}
+      {!isClaimed && !isPremium && (
+        <div style={{background:"linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%)", border:"1px solid #0ea5e9", borderRadius:"12px", padding:"20px", margin:"0 0 24px 0"}}>
+          <h3 style={{margin:"0 0 8px 0", color:"#0369a1"}}>Is this your business?</h3>
+          <p style={{margin:"0 0 16px 0", color:"#0c4a6e", fontSize:"14px"}}>Claim this listing to manage your profile, respond to reviews, and unlock premium features.</p>
+          <button className="btn bp" onClick={() => user ? setShowClaimModal(true) : setModal("in")}>Claim This Listing</button>
+        </div>
+      )}
+
+      {isClaimed && isOwner && !isPremium && (
+        <div style={{background:"linear-gradient(135deg, #faf5ff 0%, #f3e8ff 100%)", border:"1px solid #a855f7", borderRadius:"12px", padding:"20px", margin:"0 0 24px 0"}}>
+          <div style={{display:"flex", alignItems:"center", gap:"8px", marginBottom:"8px"}}>
+            <span style={{fontSize:"24px"}}>💎</span>
+            <h3 style={{margin:0, color:"#7c3aed"}}>Upgrade to Premium</h3>
+          </div>
+          <p style={{margin:"0 0 12px 0", color:"#5b21b6", fontSize:"14px"}}>Showcase your craft and connect with surfers worldwide.</p>
+          <ul style={{margin:"0 0 16px 0", paddingLeft:"20px", color:"#6b21a8", fontSize:"13px"}}>
+            <li><strong>Watch This Shaper at Work</strong> - Link YouTube videos of you shaping</li>
+            <li><strong>Shaping Knowledge</strong> - Share videos about board design features</li>
+            <li><strong>Portfolio</strong> - Showcase boards you make with photos & descriptions</li>
+          </ul>
+          <div style={{display:"flex", gap:"12px", alignItems:"center", flexWrap:"wrap"}}>
+            <button className="btn" style={{background:"#8b5cf6", color:"#fff", border:"none"}} onClick={() => setShowPremiumModal(true)}>
+              Start 7-Day Free Trial
+            </button>
+            <span style={{fontSize:"13px", color:"#7c3aed"}}>Then $39/month • Cancel anytime</span>
+          </div>
+        </div>
+      )}
+
+      {showClaimModal && <ClaimModal listing={listing} onClose={() => setShowClaimModal(false)} onSuccess={() => { setShowClaimModal(false); showToast("Claim submitted! We'll be in touch."); }} />}
+      {showPremiumModal && <PremiumModal listing={listing} onClose={() => setShowPremiumModal(false)} />}
 
       <div className="ld-body">
         <div className="ld-sec">
@@ -2464,6 +2689,7 @@ function AdminPage() {
   const [heroDrag, setHeroDrag] = useState(false);
   const [logoDrag, setLogoDrag] = useState(false);
   const [pendingQuestions, setPendingQuestions] = useState([]);
+  const [pendingClaims, setPendingClaims] = useState([]);
   const [impersonating, setImpersonating] = useState(null); // For impersonating premium users
   const heroRef = useRef();
   const logoRef = useRef();
@@ -2476,6 +2702,38 @@ function AdminPage() {
       .then(data => setPendingQuestions(data.questions || []))
       .catch(err => console.error("Failed to load questions:", err));
   }, []);
+
+  // Load pending claims from backend
+  useEffect(() => {
+    fetch(`${API_BASE}/api/claims?status=pending`)
+      .then(res => res.json())
+      .then(data => setPendingClaims(data.claims || []))
+      .catch(err => console.error("Failed to load claims:", err));
+  }, []);
+
+  const approveClaim = async (claim) => {
+    try {
+      await fetch(`${API_BASE}/api/claims/${claim.listingId}/approve`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: claim.claimerEmail })
+      });
+      setPendingClaims(p => p.filter(c => c.listingId !== claim.listingId));
+      showToast(`Claim approved for ${claim.listingName}!`);
+    } catch (err) {
+      console.error("Failed to approve claim:", err);
+    }
+  };
+
+  const rejectClaim = async (claim) => {
+    try {
+      await fetch(`${API_BASE}/api/claims/${claim.listingId}/reject`, { method: "PUT" });
+      setPendingClaims(p => p.filter(c => c.listingId !== claim.listingId));
+      showToast("Claim rejected.");
+    } catch (err) {
+      console.error("Failed to reject claim:", err);
+    }
+  };
 
   const approveQuestion = async (q) => {
     try {
@@ -2631,6 +2889,7 @@ function AdminPage() {
         {[
           ["live",     `Listings (${listings.length})`],
           ["questions", `Questions (${pendingQuestions.length})`],
+          ["claims",   "Claims"],
           ["hero",     "Site Settings"],
         ].map(([t,l]) => (
           <button key={t} className={`atab ${tab===t?"on":""}`} onClick={()=>setTab(t)}>{l}</button>
@@ -2675,6 +2934,30 @@ function AdminPage() {
                   <div className="aacts">
                     <button className="btn bsm bap" onClick={()=>approveQuestion(q)}>✓ Approve</button>
                     <button className="btn bsm brej" onClick={()=>rejectQuestion(q)}>✕ Reject</button>
+                  </div>
+                </div>
+              ))
+          }
+        </div>
+      )}
+
+      {tab==="claims" && (
+        <div>
+          <h3 style={{marginBottom:16}}>Listing Claims Awaiting Review</h3>
+          {pendingClaims.length===0
+            ? <div className="empty"><div className="emico">✅</div><p>No claims awaiting approval.</p></div>
+            : pendingClaims.map(c => (
+                <div key={c.listingId} className="acard">
+                  <div className="ainfo">
+                    <h4 style={{marginBottom:4}}>🏪 {c.listingName}</h4>
+                    <p className="sub"><strong>Claimed by:</strong> {c.claimerName} ({c.claimerEmail})</p>
+                    {c.claimerPhone && <p className="sub"><strong>Phone:</strong> {c.claimerPhone}</p>}
+                    {c.message && <p className="sub"><strong>Message:</strong> {c.message}</p>}
+                    <p className="sub"><strong>Date:</strong> {c.createdAt ? new Date(c.createdAt).toLocaleDateString() : "Unknown"}</p>
+                  </div>
+                  <div className="aacts">
+                    <button className="btn bsm bap" onClick={()=>approveClaim(c)}>✓ Approve</button>
+                    <button className="btn bsm brej" onClick={()=>rejectClaim(c)}>✕ Reject</button>
                   </div>
                 </div>
               ))

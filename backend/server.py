@@ -1,7 +1,7 @@
 import os
 import hashlib
-from datetime import datetime, timezone
-from fastapi import FastAPI, HTTPException, Body
+from datetime import datetime, timezone, timedelta
+from fastapi import FastAPI, HTTPException, Body, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional, List, Any, Dict
@@ -34,6 +34,13 @@ bookmarks_collection = db["bookmarks"]
 listings_collection = db["listings"]
 questions_collection = db["questions"]
 settings_collection = db["settings"]
+claims_collection = db["claims"]
+subscriptions_collection = db["subscriptions"]
+payment_transactions_collection = db["payment_transactions"]
+
+# Premium pricing
+PREMIUM_PRICE = 39.00  # $39/month
+TRIAL_DAYS = 7
 
 LANGUAGE_NAMES = {
     "pt-BR": "Brazilian Portuguese",
@@ -393,6 +400,244 @@ async def update_settings(data: Dict[str, Any] = Body(...)):
         upsert=True
     )
     return {"success": True}
+
+# ──────────────────────────────────────────────
+# CLAIM LISTING ENDPOINTS
+# ──────────────────────────────────────────────
+
+@app.post("/api/claims")
+async def create_claim(data: Dict[str, Any] = Body(...)):
+    """Submit a claim request for a listing"""
+    now = datetime.now(timezone.utc).isoformat()
+    claim = {
+        "listingId": data.get("listingId"),
+        "listingName": data.get("listingName"),
+        "claimerEmail": data.get("email"),
+        "claimerName": data.get("name"),
+        "claimerPhone": data.get("phone", ""),
+        "message": data.get("message", ""),
+        "status": "pending",  # pending, approved, rejected
+        "createdAt": now
+    }
+    claims_collection.insert_one(claim)
+    claim.pop("_id", None)
+    return {"success": True, "claim": claim}
+
+@app.get("/api/claims")
+async def get_claims(status: str = None):
+    """Get all claims (for admin)"""
+    query = {}
+    if status:
+        query["status"] = status
+    claims = list(claims_collection.find(query, {"_id": 0}))
+    return {"claims": claims}
+
+@app.put("/api/claims/{listing_id}/approve")
+async def approve_claim(listing_id: int, data: Dict[str, Any] = Body(...)):
+    """Approve a claim and link user to listing"""
+    now = datetime.now(timezone.utc).isoformat()
+    
+    # Update claim status
+    claims_collection.update_one(
+        {"listingId": listing_id, "status": "pending"},
+        {"$set": {"status": "approved", "approvedAt": now}}
+    )
+    
+    # Update listing with owner
+    listings_collection.update_one(
+        {"id": listing_id},
+        {"$set": {
+            "ownerEmail": data.get("email"),
+            "claimed": True,
+            "claimedAt": now
+        }}
+    )
+    
+    return {"success": True}
+
+@app.put("/api/claims/{listing_id}/reject")
+async def reject_claim(listing_id: int):
+    """Reject a claim"""
+    claims_collection.update_one(
+        {"listingId": listing_id, "status": "pending"},
+        {"$set": {"status": "rejected", "rejectedAt": datetime.now(timezone.utc).isoformat()}}
+    )
+    return {"success": True}
+
+# ──────────────────────────────────────────────
+# PREMIUM SUBSCRIPTION ENDPOINTS (STRIPE)
+# ──────────────────────────────────────────────
+
+@app.post("/api/premium/checkout")
+async def create_premium_checkout(request: Request, data: Dict[str, Any] = Body(...)):
+    """Create a Stripe checkout session for premium subscription"""
+    from emergentintegrations.payments.stripe.checkout import StripeCheckout, CheckoutSessionRequest
+    
+    listing_id = data.get("listingId")
+    email = data.get("email")
+    origin_url = data.get("originUrl", "")
+    
+    if not listing_id or not email:
+        raise HTTPException(status_code=400, detail="Missing listingId or email")
+    
+    api_key = os.environ.get("STRIPE_API_KEY")
+    host_url = str(request.base_url).rstrip("/")
+    webhook_url = f"{host_url}/api/webhook/stripe"
+    
+    stripe_checkout = StripeCheckout(api_key=api_key, webhook_url=webhook_url)
+    
+    success_url = f"{origin_url}/premium-success?session_id={{CHECKOUT_SESSION_ID}}&listing_id={listing_id}"
+    cancel_url = f"{origin_url}/listing/{listing_id}"
+    
+    checkout_request = CheckoutSessionRequest(
+        amount=PREMIUM_PRICE,
+        currency="usd",
+        success_url=success_url,
+        cancel_url=cancel_url,
+        metadata={
+            "listing_id": str(listing_id),
+            "email": email,
+            "type": "premium_subscription"
+        }
+    )
+    
+    session = await stripe_checkout.create_checkout_session(checkout_request)
+    
+    # Create pending transaction record
+    now = datetime.now(timezone.utc).isoformat()
+    payment_transactions_collection.insert_one({
+        "sessionId": session.session_id,
+        "listingId": listing_id,
+        "email": email,
+        "amount": PREMIUM_PRICE,
+        "currency": "usd",
+        "status": "pending",
+        "paymentStatus": "pending",
+        "createdAt": now
+    })
+    
+    return {"url": session.url, "sessionId": session.session_id}
+
+@app.get("/api/premium/status/{session_id}")
+async def get_premium_status(request: Request, session_id: str):
+    """Check the status of a premium checkout session"""
+    from emergentintegrations.payments.stripe.checkout import StripeCheckout
+    
+    api_key = os.environ.get("STRIPE_API_KEY")
+    host_url = str(request.base_url).rstrip("/")
+    webhook_url = f"{host_url}/api/webhook/stripe"
+    
+    stripe_checkout = StripeCheckout(api_key=api_key, webhook_url=webhook_url)
+    
+    status = await stripe_checkout.get_checkout_status(session_id)
+    
+    # Update transaction record
+    if status.payment_status == "paid":
+        # Check if already processed
+        transaction = payment_transactions_collection.find_one({"sessionId": session_id})
+        if transaction and transaction.get("status") != "completed":
+            now = datetime.now(timezone.utc).isoformat()
+            
+            # Update transaction
+            payment_transactions_collection.update_one(
+                {"sessionId": session_id},
+                {"$set": {"status": "completed", "paymentStatus": "paid", "completedAt": now}}
+            )
+            
+            # Activate premium with 7-day trial consideration
+            listing_id = int(status.metadata.get("listing_id", 0))
+            if listing_id:
+                trial_end = datetime.now(timezone.utc)
+                # First month starts after trial
+                subscriptions_collection.update_one(
+                    {"listingId": listing_id},
+                    {"$set": {
+                        "listingId": listing_id,
+                        "email": status.metadata.get("email"),
+                        "status": "active",
+                        "startedAt": now,
+                        "currentPeriodEnd": (trial_end + timedelta(days=30)).isoformat()
+                    }},
+                    upsert=True
+                )
+                
+                # Mark listing as premium
+                listings_collection.update_one(
+                    {"id": listing_id},
+                    {"$set": {"premium": True, "premiumSince": now}}
+                )
+    
+    return {
+        "status": status.status,
+        "paymentStatus": status.payment_status,
+        "amount": status.amount_total,
+        "metadata": status.metadata
+    }
+
+@app.post("/api/webhook/stripe")
+async def stripe_webhook(request: Request):
+    """Handle Stripe webhook events"""
+    from emergentintegrations.payments.stripe.checkout import StripeCheckout
+    
+    api_key = os.environ.get("STRIPE_API_KEY")
+    host_url = str(request.base_url).rstrip("/")
+    webhook_url = f"{host_url}/api/webhook/stripe"
+    
+    stripe_checkout = StripeCheckout(api_key=api_key, webhook_url=webhook_url)
+    
+    body = await request.body()
+    signature = request.headers.get("Stripe-Signature", "")
+    
+    try:
+        event = await stripe_checkout.handle_webhook(body, signature)
+        
+        if event.payment_status == "paid":
+            # Process successful payment
+            listing_id = int(event.metadata.get("listing_id", 0))
+            if listing_id:
+                now = datetime.now(timezone.utc).isoformat()
+                listings_collection.update_one(
+                    {"id": listing_id},
+                    {"$set": {"premium": True, "premiumSince": now}}
+                )
+        
+        return {"received": True}
+    except Exception as e:
+        print(f"Webhook error: {e}")
+        return {"error": str(e)}
+
+@app.post("/api/premium/start-trial")
+async def start_premium_trial(data: Dict[str, Any] = Body(...)):
+    """Start a 7-day free trial for premium"""
+    listing_id = data.get("listingId")
+    email = data.get("email")
+    
+    if not listing_id or not email:
+        raise HTTPException(status_code=400, detail="Missing listingId or email")
+    
+    # Check if trial already used
+    existing = subscriptions_collection.find_one({"listingId": listing_id})
+    if existing:
+        raise HTTPException(status_code=400, detail="Trial already used for this listing")
+    
+    now = datetime.now(timezone.utc)
+    trial_end = now + timedelta(days=TRIAL_DAYS)
+    
+    subscriptions_collection.insert_one({
+        "listingId": listing_id,
+        "email": email,
+        "status": "trial",
+        "trialStartedAt": now.isoformat(),
+        "trialEndsAt": trial_end.isoformat()
+    })
+    
+    # Mark listing as premium (trial)
+    listings_collection.update_one(
+        {"id": listing_id},
+        {"$set": {"premium": True, "premiumTrial": True, "trialEndsAt": trial_end.isoformat()}}
+    )
+    
+    return {"success": True, "trialEndsAt": trial_end.isoformat()}
 
 # ──────────────────────────────────────────────
 # VIDEO ENDPOINTS
