@@ -295,26 +295,54 @@ async def delete_listing(listing_id: int):
 # ──────────────────────────────────────────────
 
 @app.get("/api/questions")
-async def get_all_questions():
-    """Get all questions"""
-    questions = list(questions_collection.find({}, {"_id": 0}))
+async def get_all_questions(status: str = None):
+    """Get all questions, optionally filtered by status"""
+    query = {}
+    if status == "pending":
+        query["approved"] = {"$ne": True}
+    elif status == "approved":
+        query["approved"] = True
+    questions = list(questions_collection.find(query, {"_id": 0}))
     return {"questions": questions}
 
 @app.get("/api/questions/shaper/{shaper_id}")
 async def get_shaper_questions(shaper_id: int):
-    """Get questions for a specific shaper"""
-    questions = list(questions_collection.find({"shaperId": shaper_id}, {"_id": 0}))
+    """Get approved questions for a specific shaper"""
+    questions = list(questions_collection.find(
+        {"shaperId": shaper_id, "approved": True}, 
+        {"_id": 0}
+    ))
     return {"questions": questions}
 
 @app.post("/api/questions")
 async def create_question(question: Dict[str, Any] = Body(...)):
-    """Create a new question"""
+    """Create a new question (pending approval)"""
     now = datetime.now(timezone.utc).isoformat()
     question["createdAt"] = now
     question["id"] = int(datetime.now(timezone.utc).timestamp() * 1000)
+    question["approved"] = False  # Requires admin approval
     questions_collection.insert_one(question)
     question.pop("_id", None)
     return {"success": True, "question": question}
+
+@app.put("/api/questions/{question_id}/approve")
+async def approve_question(question_id: int):
+    """Approve a question"""
+    result = questions_collection.update_one(
+        {"id": question_id},
+        {"$set": {"approved": True, "approvedAt": datetime.now(timezone.utc).isoformat()}}
+    )
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Question not found")
+    return {"success": True}
+
+@app.delete("/api/questions/{question_id}")
+async def delete_question(question_id: int):
+    """Delete/reject a question"""
+    result = questions_collection.delete_one({"id": question_id})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Question not found")
+    return {"success": True}
 
 @app.put("/api/questions/{question_id}/answer")
 async def answer_question(question_id: int, answer: Dict[str, Any] = Body(...)):
@@ -323,6 +351,18 @@ async def answer_question(question_id: int, answer: Dict[str, Any] = Body(...)):
     result = questions_collection.update_one(
         {"id": question_id},
         {"$set": {"answer": answer.get("answer"), "answeredAt": now}}
+    )
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Question not found")
+    return {"success": True}
+
+@app.put("/api/questions/{question_id}/vote")
+async def vote_question(question_id: int, vote: Dict[str, Any] = Body(...)):
+    """Upvote/downvote a question"""
+    increment = 1 if vote.get("direction") == "up" else -1
+    result = questions_collection.update_one(
+        {"id": question_id},
+        {"$inc": {"votes": increment}}
     )
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Question not found")

@@ -1287,10 +1287,25 @@ function AskAShaper({ listing }) {
     }
   };
 
-  const vote = id => {
+  const vote = async (id) => {
+    const q = questions.find(q => q.id === id);
+    const direction = q?.votedByMe ? "down" : "up";
+    
+    // Optimistic update
     setQuestions(p => p.map(q =>
       q.id === id ? { ...q, votes: q.votedByMe ? q.votes - 1 : q.votes + 1, votedByMe: !q.votedByMe } : q
     ));
+    
+    // Sync to backend
+    try {
+      await fetch(`${API_BASE}/api/questions/${id}/vote`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ direction })
+      });
+    } catch (err) {
+      console.error("Failed to vote:", err);
+    }
   };
 
   const sorted = [...questions].sort((a, b) => b.votes - a.votes);
@@ -2358,9 +2373,38 @@ function AdminPage() {
   const [showCM, setShowCM]   = useState(false);
   const [heroDrag, setHeroDrag] = useState(false);
   const [logoDrag, setLogoDrag] = useState(false);
+  const [pendingQuestions, setPendingQuestions] = useState([]);
   const heroRef = useRef();
   const logoRef = useRef();
   const csvRef  = useRef();
+  
+  // Load pending questions from backend
+  useEffect(() => {
+    fetch(`${API_BASE}/api/questions?status=pending`)
+      .then(res => res.json())
+      .then(data => setPendingQuestions(data.questions || []))
+      .catch(err => console.error("Failed to load questions:", err));
+  }, []);
+
+  const approveQuestion = async (q) => {
+    try {
+      await fetch(`${API_BASE}/api/questions/${q.id}/approve`, { method: "PUT" });
+      setPendingQuestions(p => p.filter(x => x.id !== q.id));
+      showToast("Question approved!");
+    } catch (err) {
+      console.error("Failed to approve question:", err);
+    }
+  };
+
+  const rejectQuestion = async (q) => {
+    try {
+      await fetch(`${API_BASE}/api/questions/${q.id}`, { method: "DELETE" });
+      setPendingQuestions(p => p.filter(x => x.id !== q.id));
+      showToast("Question rejected.");
+    } catch (err) {
+      console.error("Failed to reject question:", err);
+    }
+  };
   
   // Live listings search & filter state
   const [liveSearch, setLiveSearch] = useState("");
@@ -2497,6 +2541,7 @@ function AdminPage() {
           ["pending",  `Pending (${pending.length})`],
           ["reviews",  `Reviews (${pendingReviews.length})`],
           ["live",     `Live (${listings.length})`],
+          ["questions", `Questions (${pendingQuestions.length})`],
           ["analytics","📊 Analytics"],
           ["hero",     "Hero Image"],
         ].map(([t,l]) => (
@@ -2524,6 +2569,29 @@ function AdminPage() {
                 </div>
               );
             })
+      )}
+
+      {tab==="questions" && (
+        <div>
+          <h3 style={{marginBottom:16}}>Questions Awaiting Review</h3>
+          {pendingQuestions.length===0
+            ? <div className="empty"><div className="emico">✅</div><p>No questions awaiting approval.</p></div>
+            : pendingQuestions.map(q => (
+                <div key={q.id} className="acard">
+                  <div className="ainfo">
+                    <h4 style={{marginBottom:4}}>❓ {q.text}</h4>
+                    <p className="sub">Asked by: {q.name || "Anonymous"}</p>
+                    <p className="sub">For shaper: {q.shaperName || `ID ${q.shaperId}`}</p>
+                    <p className="sub">Date: {q.createdAt ? new Date(q.createdAt).toLocaleDateString() : q.date}</p>
+                  </div>
+                  <div className="aacts">
+                    <button className="btn bsm bap" onClick={()=>approveQuestion(q)}>✓ Approve</button>
+                    <button className="btn bsm brej" onClick={()=>rejectQuestion(q)}>✕ Reject</button>
+                  </div>
+                </div>
+              ))
+          }
+        </div>
       )}
 
       {tab==="analytics" && <AnalyticsTab listings={listings} />}
