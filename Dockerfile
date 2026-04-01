@@ -1,14 +1,14 @@
 FROM python:3.11-slim
 
-# Force rebuild - timestamp 20260401-1817
+# Force rebuild - timestamp 20260401-1820
 WORKDIR /app
 
 # Upgrade pip first
 RUN pip install --upgrade pip
 
-# Copy and install requirements with Emergent's private package index
+# Copy and install requirements
 COPY backend/requirements.txt .
-RUN pip install --no-cache-dir --extra-index-url https://d33sy5i8bnduwe.cloudfront.net/simple/ -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
 
 # Force copy of latest backend code
 COPY backend/ ./backend/

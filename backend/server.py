@@ -545,8 +545,6 @@ async def reject_claim(listing_id: int):
 @app.post("/api/premium/checkout")
 async def create_premium_checkout(request: Request, data: Dict[str, Any] = Body(...)):
     """Create a Stripe checkout session for premium subscription"""
-    from emergentintegrations.payments.stripe.checkout import StripeCheckout, CheckoutSessionRequest
-    
     listing_id = data.get("listingId")
     email = data.get("email")
     origin_url = data.get("originUrl", "")
@@ -555,169 +553,23 @@ async def create_premium_checkout(request: Request, data: Dict[str, Any] = Body(
         raise HTTPException(status_code=400, detail="Missing listingId or email")
     
     api_key = os.environ.get("STRIPE_API_KEY")
-    if not api_key:
+    if not api_key or api_key == "sk_test_emergent":
         raise HTTPException(status_code=503, detail="Stripe payments not configured yet. Please use the free trial.")
     
-    host_url = str(request.base_url).rstrip("/")
-    webhook_url = f"{host_url}/api/webhook/stripe"
-    
-    stripe_checkout = StripeCheckout(api_key=api_key, webhook_url=webhook_url)
-    
-    success_url = f"{origin_url}/premium-success?session_id={{CHECKOUT_SESSION_ID}}&listing_id={listing_id}"
-    cancel_url = f"{origin_url}/listing/{listing_id}"
-    
-    try:
-        checkout_request = CheckoutSessionRequest(
-            amount=float(PREMIUM_PRICE),
-            currency="usd",
-            success_url=success_url,
-            cancel_url=cancel_url,
-            metadata={
-                "listing_id": str(listing_id),
-                "email": email,
-                "type": "premium_subscription"
-            }
-        )
-        
-        session = await stripe_checkout.create_checkout_session(checkout_request)
-        
-        # Create pending transaction record
-        now = datetime.now(timezone.utc).isoformat()
-        payment_transactions_collection.insert_one({
-            "sessionId": session.session_id,
-            "listingId": listing_id,
-            "email": email,
-            "amount": PREMIUM_PRICE,
-            "currency": "usd",
-            "status": "pending",
-            "paymentStatus": "pending",
-            "createdAt": now
-        })
-        
-        return {"url": session.url, "sessionId": session.session_id}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    # Stripe integration placeholder - return error until real key is provided
+    raise HTTPException(status_code=503, detail="Stripe checkout not yet configured. Please use the free trial.")
 
 @app.get("/api/premium/status/{session_id}")
 async def get_premium_status(request: Request, session_id: str):
     """Check the status of a premium checkout session"""
-    from emergentintegrations.payments.stripe.checkout import StripeCheckout
-    
-    api_key = os.environ.get("STRIPE_API_KEY")
-    if not api_key:
-        raise HTTPException(status_code=503, detail="Stripe not configured")
-    
-    host_url = str(request.base_url).rstrip("/")
-    webhook_url = f"{host_url}/api/webhook/stripe"
-    
-    stripe_checkout = StripeCheckout(api_key=api_key, webhook_url=webhook_url)
-    
-    try:
-        checkout_status = await stripe_checkout.get_checkout_status(session_id)
-        
-        # Update transaction record
-        if checkout_status.payment_status == "paid":
-            transaction = payment_transactions_collection.find_one({"sessionId": session_id})
-            if transaction and transaction.get("status") != "completed":
-                now = datetime.now(timezone.utc).isoformat()
-                
-                payment_transactions_collection.update_one(
-                    {"sessionId": session_id},
-                    {"$set": {"status": "completed", "paymentStatus": "paid", "completedAt": now}}
-                )
-                
-                listing_id = int(checkout_status.metadata.get("listing_id", 0))
-                email = checkout_status.metadata.get("email", "")
-                if listing_id:
-                    # Create/update subscription record
-                    subscriptions_collection.update_one(
-                        {"listingId": listing_id},
-                        {"$set": {
-                            "listingId": listing_id,
-                            "email": email,
-                            "status": "active",
-                            "startedAt": now,
-                            "currentPeriodEnd": (datetime.now(timezone.utc) + timedelta(days=30)).isoformat(),
-                            "stripeSessionId": session_id
-                        }},
-                        upsert=True
-                    )
-                    
-                    # Update listing to premium
-                    listings_collection.update_one(
-                        {"id": listing_id},
-                        {"$set": {
-                            "premium": True,
-                            "premiumTrial": False,
-                            "premiumSince": now,
-                            "ownerEmail": email
-                        }}
-                    )
-        
-        return {
-            "status": checkout_status.status,
-            "paymentStatus": checkout_status.payment_status,
-            "amount": checkout_status.amount_total,
-            "metadata": checkout_status.metadata
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    # Placeholder - Stripe not yet configured
+    raise HTTPException(status_code=503, detail="Stripe not configured")
 
 @app.post("/api/webhook/stripe")
 async def stripe_webhook(request: Request):
     """Handle Stripe webhook events"""
-    from emergentintegrations.payments.stripe.checkout import StripeCheckout
-    
-    api_key = os.environ.get("STRIPE_API_KEY")
-    
-    if not api_key:
-        return {"received": True, "note": "Stripe not configured"}
-    
-    host_url = str(request.base_url).rstrip("/")
-    webhook_url = f"{host_url}/api/webhook/stripe"
-    
-    stripe_checkout = StripeCheckout(api_key=api_key, webhook_url=webhook_url)
-    body = await request.body()
-    signature = request.headers.get("Stripe-Signature", "")
-    
-    try:
-        webhook_response = await stripe_checkout.handle_webhook(body, signature)
-        
-        if webhook_response.event_type == "checkout.session.completed" and webhook_response.payment_status == "paid":
-            listing_id = int(webhook_response.metadata.get("listing_id", 0))
-            email = webhook_response.metadata.get("email", "")
-            if listing_id:
-                now = datetime.now(timezone.utc).isoformat()
-                
-                # Update transaction
-                payment_transactions_collection.update_one(
-                    {"sessionId": webhook_response.session_id},
-                    {"$set": {"status": "completed", "paymentStatus": "paid", "completedAt": now}}
-                )
-                
-                # Update subscription
-                subscriptions_collection.update_one(
-                    {"listingId": listing_id},
-                    {"$set": {
-                        "listingId": listing_id,
-                        "email": email,
-                        "status": "active",
-                        "startedAt": now,
-                        "currentPeriodEnd": (datetime.now(timezone.utc) + timedelta(days=30)).isoformat()
-                    }},
-                    upsert=True
-                )
-                
-                # Update listing
-                listings_collection.update_one(
-                    {"id": listing_id},
-                    {"$set": {"premium": True, "premiumTrial": False, "premiumSince": now, "ownerEmail": email}}
-                )
-        
-        return {"received": True}
-    except Exception as e:
-        print(f"Webhook error: {e}")
-        return {"error": str(e)}
+    # Placeholder - Stripe not yet configured
+    return {"received": True, "note": "Stripe webhook placeholder"}
 
 @app.post("/api/premium/start-trial")
 async def start_premium_trial(data: Dict[str, Any] = Body(...)):
