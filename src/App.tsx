@@ -2183,33 +2183,49 @@ function DataManagement() {
 
   const handleFile = async (dbKey, file) => {
     if (!file) return;
+    console.log("[CSV Upload] Starting upload for:", dbKey, file.name);
     const reader = new FileReader();
     reader.onload = async e => {
       const text = e.target.result;
+      console.log("[CSV Upload] File read, length:", text.length);
       let updated = listings; let count = 0;
       try {
-        if (dbKey==="shapers") { const parsed=parseShapersCSV(text); count=parsed.length; const ids=new Set(listings.map(l=>String(l.id))); const newOnes=parsed.filter(p=>!ids.has(String(p.id))); updated=[...listings.map(l=>{const match=parsed.find(p=>String(p.id)===String(l.id));return match?{...l,...match}:l;}),...newOnes]; }
+        if (dbKey==="shapers") { 
+          const parsed = parseShapersCSV(text); 
+          count = parsed.length; 
+          console.log("[CSV Upload] Parsed shapers:", count);
+          const ids = new Set(listings.map(l=>String(l.id))); 
+          const newOnes = parsed.filter(p=>!ids.has(String(p.id))); 
+          updated = [...listings.map(l=>{const match=parsed.find(p=>String(p.id)===String(l.id));return match?{...l,...match}:l;}),...newOnes]; 
+          console.log("[CSV Upload] Updated listings count:", updated.length);
+        }
         else if (dbKey==="boards") { updated=parseBoardsCSV(text,listings); count=text.trim().split("\n").length-1; }
         else if (dbKey==="knowledge") { updated=parseKnowledgeCSV(text,listings); count=text.trim().split("\n").length-1; }
         else if (dbKey==="reviews") { updated=parseReviewsCSV(text,listings); count=text.trim().split("\n").length-1; }
         
         // Save to backend
+        console.log("[CSV Upload] Saving to backend, listings:", updated.length);
         try {
           const res = await fetch("/api/listings/bulk", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ listings: updated })
           });
+          console.log("[CSV Upload] Backend response status:", res.status);
           if (!res.ok) throw new Error("Failed to save to server");
           const data = await res.json();
+          console.log("[CSV Upload] Backend response:", data);
           showToast(`${dbKey} updated — ${data.inserted} new, ${data.updated} updated`);
         } catch (err) {
-          console.error("Failed to save to backend:", err);
+          console.error("[CSV Upload] Failed to save to backend:", err);
           showToast(`${dbKey} updated locally — ${count} row${count!==1?"s":""} (server sync failed)`);
         }
         
         setListings(updated); setImported(p=>({...p,[dbKey]:count}));
-      } catch(err) { showToast("Error reading file — check the format"); }
+      } catch(err) { 
+        console.error("[CSV Upload] Error:", err);
+        showToast("Error reading file — check the format"); 
+      }
     };
     reader.readAsText(file);
   };
