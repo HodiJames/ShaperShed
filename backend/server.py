@@ -840,6 +840,13 @@ async def health():
 @app.get("/api/debug")
 async def debug_check():
     """Debug endpoint to check environment and DB connection"""
+    import os
+    
+    # Get all env vars that might be relevant
+    all_env = {k: v[:20] + "..." if len(v) > 20 else v for k, v in os.environ.items() if 'MONGO' in k.upper() or 'DB' in k.upper()}
+    
+    mongo_url = os.environ.get("MONGO_URL", "")
+    
     try:
         count = listings_collection.count_documents({})
         db_status = f"connected - {count} listings"
@@ -849,7 +856,9 @@ async def debug_check():
     return {
         "status": "ok",
         "db_name": DB_NAME,
-        "mongo_url_set": bool(os.environ.get("MONGO_URL")),
+        "mongo_url_set": bool(mongo_url),
+        "mongo_url_preview": mongo_url[:30] + "..." if mongo_url else "NOT SET",
+        "relevant_env_vars": all_env,
         "db_status": db_status
     }
 
