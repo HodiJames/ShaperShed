@@ -11,8 +11,8 @@ RUN pip install --no-cache-dir --extra-index-url https://d33sy5i8bnduwe.cloudfro
 
 COPY backend/ ./backend/
 
-# Railway injects PORT env var at runtime
+# Railway injects PORT env var at runtime, default to 8001
 ENV PORT=8001
 
-# Use shell form to allow $PORT expansion
-CMD uvicorn backend.server:app --host 0.0.0.0 --port $PORT
+# Use shell form with explicit /bin/sh -c to ensure variable expansion
+CMD /bin/sh -c "uvicorn backend.server:app --host 0.0.0.0 --port ${PORT}"
