@@ -862,16 +862,39 @@ function ClaimModal({ listing, onClose, onSuccess }) {
 
   return (
     <div className="ov" onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="modal" style={{maxWidth:"480px"}}>
+      <div className="modal" style={{maxWidth:"520px"}}>
         <button className="mclose" onClick={onClose}>✕</button>
-        <h2>Claim {listing.name}</h2>
-        <p style={{color:"var(--txm)", marginBottom:"16px"}}>Tell us about yourself and we'll verify your connection to this business.</p>
+        
+        <div style={{textAlign:"center", marginBottom:"20px"}}>
+          <div style={{fontSize:"40px", marginBottom:"8px"}}>💎</div>
+          <h2 style={{margin:"0 0 4px 0"}}>Unlock Premium for {listing.name}</h2>
+          <p style={{color:"var(--txm)", margin:0, fontSize:"14px"}}>Showcase your craft to surfers worldwide</p>
+        </div>
+
+        <div style={{background:"var(--bg2)", borderRadius:"12px", padding:"16px", marginBottom:"20px"}}>
+          <div style={{fontWeight:"600", marginBottom:"12px"}}>Premium features include:</div>
+          <div style={{display:"flex", flexDirection:"column", gap:"8px", fontSize:"14px"}}>
+            <div>🎬 <strong>Watch This Shaper at Work</strong> — Link YouTube videos of you shaping</div>
+            <div>📚 <strong>Shaping Knowledge</strong> — Share educational content about board design</div>
+            <div>🏄 <strong>Board Portfolio</strong> — Showcase your boards with photos & specs</div>
+          </div>
+          <div style={{marginTop:"12px", padding:"10px", background:"#f0fdf4", borderRadius:"8px", fontSize:"13px", color:"#166534"}}>
+            ✓ 7-day free trial · Then $39/month · Cancel anytime
+          </div>
+        </div>
+
+        <div style={{fontWeight:"600", marginBottom:"12px"}}>Tell us about yourself</div>
         <form onSubmit={submit}>
           <div className="fg"><label className="fl">Your Name *</label><input className="fi" required value={form.name} onChange={e => setForm(p => ({...p, name: e.target.value}))} /></div>
           <div className="fg"><label className="fl">Email *</label><input className="fi" type="email" required value={form.email} onChange={e => setForm(p => ({...p, email: e.target.value}))} /></div>
           <div className="fg"><label className="fl">Phone (optional)</label><input className="fi" value={form.phone} onChange={e => setForm(p => ({...p, phone: e.target.value}))} /></div>
-          <div className="fg"><label className="fl">Tell us about your role</label><textarea className="ft" rows={3} value={form.message} onChange={e => setForm(p => ({...p, message: e.target.value}))} placeholder="e.g., I'm the owner/shaper at this business..."></textarea></div>
-          <button type="submit" className="btn bp" style={{width:"100%"}} disabled={loading}>{loading ? "Submitting..." : "Submit Claim"}</button>
+          <div className="fg"><label className="fl">Tell us about your role at {listing.name}</label><textarea className="ft" rows={3} value={form.message} onChange={e => setForm(p => ({...p, message: e.target.value}))} placeholder="e.g., I'm the owner/shaper at this business..."></textarea></div>
+          <button type="submit" className="btn" style={{width:"100%", background:"#8b5cf6", color:"#fff", border:"none"}} disabled={loading}>
+            {loading ? "Submitting..." : "Request Premium Access"}
+          </button>
+          <p style={{textAlign:"center", fontSize:"12px", color:"var(--txm)", marginTop:"12px"}}>
+            We'll verify your connection to this business and get back to you within 24-48 hours.
+          </p>
         </form>
       </div>
     </div>
@@ -1715,14 +1738,23 @@ function PremiumLock({ title, description, features, listing, onClaim, onUpgrade
   const isOwner = user && listing?.ownerEmail === user.email;
 
   const handleAction = () => {
+    console.log("PremiumLock clicked", { user: !!user, isClaimed, isOwner });
     if (!user) {
       setModal("in");
-    } else if (!isClaimed) {
-      onClaim && onClaim();
-    } else if (isOwner) {
-      onUpgrade && onUpgrade();
+    } else {
+      // Always show claim modal first if not claimed, which leads to premium
+      // Or show premium modal if already claimed and owner
+      if (!isClaimed) {
+        if (onClaim) onClaim();
+      } else if (isOwner) {
+        if (onUpgrade) onUpgrade();
+      }
     }
   };
+
+  // For non-owners viewing unclaimed listings, still show the unlock button
+  // so they can see the flow (claim modal will explain they need to be the owner)
+  const showUnlockButton = !isClaimed || isOwner;
 
   return (
     <div className="ld-lock">
@@ -1738,24 +1770,29 @@ function PremiumLock({ title, description, features, listing, onClaim, onUpgrade
       
       {/* Claim / Upgrade Actions */}
       <div style={{ marginTop: 16, textAlign: "center" }}>
-        {!isClaimed ? (
+        {showUnlockButton ? (
           <>
             <p style={{ fontSize: 13, color: "var(--txm)", marginBottom: 12 }}>
-              <strong>Is this your business?</strong> Unlock premium features to showcase your work.
+              {!isClaimed 
+                ? <><strong>Is this your business?</strong> Unlock premium features to showcase your work.</>
+                : <>Upgrade to Premium to showcase your work and connect with surfers.</>
+              }
             </p>
-            <button className="btn bp" onClick={handleAction}>
-              {user ? "Unlock Premium Features" : "Sign In to Unlock"}
+            <button 
+              className="btn" 
+              style={isClaimed && isOwner ? {background:"#8b5cf6", color:"#fff", border:"none"} : {}}
+              onClick={handleAction}
+            >
+              {!user 
+                ? "Sign In to Unlock" 
+                : !isClaimed 
+                  ? "Unlock Premium Features"
+                  : "Start 7-Day Free Trial"
+              }
             </button>
-          </>
-        ) : isOwner ? (
-          <>
-            <p style={{ fontSize: 13, color: "var(--txm)", marginBottom: 12 }}>
-              Upgrade to Premium to showcase your work and connect with surfers.
-            </p>
-            <button className="btn" style={{background:"#8b5cf6", color:"#fff", border:"none"}} onClick={handleAction}>
-              Start 7-Day Free Trial
-            </button>
-            <p style={{ fontSize: 11, color: "var(--txm)", marginTop: 8 }}>Then $39/month · Cancel anytime</p>
+            {isClaimed && isOwner && (
+              <p style={{ fontSize: 11, color: "var(--txm)", marginTop: 8 }}>Then $39/month · Cancel anytime</p>
+            )}
           </>
         ) : (
           <p style={{ fontSize: 13, color: "var(--txm)", marginTop: 12, maxWidth: 360, lineHeight: 1.6 }}>
