@@ -25,24 +25,17 @@ app.add_middleware(
 MONGO_URL = os.environ.get("MONGO_URL", "mongodb://localhost:27017")
 DB_NAME = os.environ.get("DB_NAME", "shaper_shed")
 
-print(f"Connecting to MongoDB... DB_NAME={DB_NAME}")
-print(f"MONGO_URL set: {bool(MONGO_URL and 'mongodb' in MONGO_URL)}")
+print(f"Connecting to MongoDB... DB_NAME={DB_NAME}", flush=True)
 
-try:
-    client = MongoClient(
-        MONGO_URL, 
-        serverSelectionTimeoutMS=10000,
-        connectTimeoutMS=10000,
-        socketTimeoutMS=10000
-    )
-    # Test connection immediately
-    client.admin.command('ping')
-    print(f"✓ MongoDB connected successfully")
-except Exception as e:
-    print(f"✗ MongoDB connection failed: {e}")
-    raise e  # Fail fast if DB is not available
-
+client = MongoClient(
+    MONGO_URL, 
+    serverSelectionTimeoutMS=5000,
+    connectTimeoutMS=5000,
+    socketTimeoutMS=20000
+)
 db = client[DB_NAME]
+
+print("MongoDB client initialized", flush=True)
 
 # Collections
 users_collection = db["users"]
