@@ -21,19 +21,26 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# MongoDB connection
+# MongoDB connection with timeout
 MONGO_URL = os.environ.get("MONGO_URL", "mongodb://localhost:27017")
 DB_NAME = os.environ.get("DB_NAME", "shaper_shed")
 
+print(f"Connecting to MongoDB... DB_NAME={DB_NAME}")
+print(f"MONGO_URL set: {bool(MONGO_URL and 'mongodb' in MONGO_URL)}")
+
 try:
-    client = MongoClient(MONGO_URL, serverSelectionTimeoutMS=5000)
-    # Test connection
+    client = MongoClient(
+        MONGO_URL, 
+        serverSelectionTimeoutMS=10000,
+        connectTimeoutMS=10000,
+        socketTimeoutMS=10000
+    )
+    # Test connection immediately
     client.admin.command('ping')
-    print(f"✓ MongoDB connected successfully to {DB_NAME}")
+    print(f"✓ MongoDB connected successfully")
 except Exception as e:
     print(f"✗ MongoDB connection failed: {e}")
-    # Continue anyway - will fail on first DB access
-    client = MongoClient(MONGO_URL)
+    raise e  # Fail fast if DB is not available
 
 db = client[DB_NAME]
 
