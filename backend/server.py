@@ -128,7 +128,7 @@ async def register(user: UserCreate):
         "name": f"{user.firstName} {user.lastName}",
         "heard": user.heard,
         "lookingFor": user.lookingFor,
-        "role": "superadmin" if is_admin(user.email) else "user",
+        "role": "admin" if is_admin(user.email) else "user",
         "createdAt": now,
     }
     users_collection.insert_one(user_doc)
@@ -156,7 +156,7 @@ async def login(creds: UserLogin):
         firstName=user["firstName"],
         lastName=user["lastName"],
         name=user["name"],
-        role="superadmin" if is_admin(user["email"]) else "user",
+        role="admin" if is_admin(user["email"]) else "user",
         createdAt=user.get("createdAt", "")
     )
 

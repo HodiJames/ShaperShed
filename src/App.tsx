@@ -998,7 +998,7 @@ function HomePage({ listings: allListings, onView }) {
             <p>{tr("hero.desc")}</p>
           </div>
         </div>
-        {user?.role === "superadmin" && <button className="hero-img-btn" onClick={() => setPage("admin")}>{tr("home.changeImage")}</button>}
+        {user?.role === "admin" && <button className="hero-img-btn" onClick={() => setPage("admin")}>{tr("home.changeImage")}</button>}
       </div>
 
       {/* ══ SEARCH BAR ══ */}
@@ -2859,7 +2859,7 @@ export default function App() {
   const handleAuth  = u   => {
     setUser({ ...u });
     setModal(null);
-    showToast(u.role==="superadmin" ? `Welcome back, ${u.name} 👋` : `Welcome, ${u.name}!`);
+    showToast(u.role==="admin" ? `Welcome back, ${u.name} 👋` : `Welcome, ${u.name}!`);
   };
   const viewListing = l => { setSelected(l); setPage("listing"); };
 
@@ -2904,7 +2904,7 @@ export default function App() {
                 <BookmarkIcon saved={savedIds.length>0} size={15} />
                 {tr("nav.saved")}{savedIds.length>0?` (${savedIds.length})`:""}
               </button>
-              {user.role==="superadmin" && (
+              {user.role==="admin" && (
                 <button className="nav-admin-btn" onClick={()=>setPage("admin")}>
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/>
@@ -2932,8 +2932,8 @@ export default function App() {
           {page==="home"    && <HomePage listings={listings} onView={viewListing} />}
           {page==="listing" && selected && <ListingPage listing={selected} />}
           {page==="submit"  && <SubmitPage />}
-          {page==="admin"   && user?.role==="superadmin" && <AdminPage />}
-          {page==="admin"   && user?.role!=="superadmin" && (
+          {page==="admin"   && user?.role==="admin" && <AdminPage />}
+          {page==="admin"   && user?.role!=="admin" && (
             <div className="empty" style={{paddingTop:80}}>
               <div className="emico">🔒</div>
               <p>You don't have permission to access this page.</p>
