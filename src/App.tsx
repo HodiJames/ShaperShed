@@ -66,8 +66,8 @@ function TranslatedText({ text, locale }) {
 // ADMIN CONFIG
 // ─────────────────────────────────────────────
 const SUPER_ADMINS = [
-  "admin@shapersheds.com",
-  "hello@shapersheds.com",
+  "admin@shapershed.com",
+  "hello@shapershed.com",
 ];
 
 const isAdmin = email => SUPER_ADMINS.map(e => e.toLowerCase()).includes((email||"").toLowerCase());
@@ -2857,10 +2857,9 @@ export default function App() {
   };
   
   const handleAuth  = u   => {
-    const role = isAdmin(u.email) ? "superadmin" : "user";
-    setUser({ ...u, role });
+    setUser({ ...u });
     setModal(null);
-    showToast(role==="superadmin" ? `Welcome back, ${u.name} 👋` : `Welcome, ${u.name}!`);
+    showToast(u.role==="superadmin" ? `Welcome back, ${u.name} 👋` : `Welcome, ${u.name}!`);
   };
   const viewListing = l => { setSelected(l); setPage("listing"); };
 
