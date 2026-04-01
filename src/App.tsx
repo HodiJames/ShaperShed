@@ -2197,7 +2197,7 @@ function ProfilePage() {
         <div>
           {savedListings.length===0
             ? <div className="empty"><div className="emico">🔖</div><p>{tr("profile.noSaved")}</p><button className="btn bp" onClick={()=>setPage("home")}>{tr("saved.browse")}</button></div>
-            : <div className="grid">{savedListings.map(l=><Card key={l.id} listing={l} onClick={()=>{}} />)}</div>
+            : <div className="grid">{savedListings.map(l=><Card key={l.id} listing={l} onClick={()=>{setSelected(l);setPage("listing");}} />)}</div>
           }
         </div>
       )}
@@ -2717,7 +2717,7 @@ function SavedPage({ listings }) {
       <div className="pgh"><h1>{tr("saved.title")}</h1><p style={{color:"var(--tx2)",fontSize:14}}>{tr("saved.subtitle")}</p></div>
       {saved.length===0
         ? <div className="empty"><div className="emico">🔖</div><p>{tr("saved.empty")}</p><button className="btn bp" onClick={()=>setPage("home")}>{tr("saved.browse")}</button></div>
-        : <div className="grid">{saved.map(l=><Card key={l.id} listing={l} onClick={()=>{}} />)}</div>
+        : <div className="grid">{saved.map(l=><Card key={l.id} listing={l} onClick={()=>{setSelected(l);setPage("listing");}} />)}</div>
       }
     </div>
   );
