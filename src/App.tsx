@@ -1,9 +1,14 @@
 import { useState, useEffect, createContext, useContext, useRef, useCallback } from "react";
 
 // ─────────────────────────────────────────────
+// API BASE URL
+// ─────────────────────────────────────────────
+const API_BASE = import.meta.env.VITE_API_URL || "";
+
+// ─────────────────────────────────────────────
 // TRANSLATION API
 // ─────────────────────────────────────────────
-const TRANSLATE_API = "/api/translate";
+const TRANSLATE_API = `${API_BASE}/api/translate`;
 const translationCache = new Map();
 
 async function translateText(text, targetLocale) {
@@ -2206,7 +2211,7 @@ function DataManagement() {
         // Save to backend
         console.log("[CSV Upload] Saving to backend, listings:", updated.length);
         try {
-          const res = await fetch("/api/listings/bulk", {
+          const res = await fetch(`${API_BASE}/api/listings/bulk", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ listings: updated })
@@ -2337,7 +2342,7 @@ function AdminPage() {
     showToast(`"${item.name}" approved!`);
     // Sync to backend
     try {
-      await fetch("/api/listings", {
+      await fetch(`${API_BASE}/api/listings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(newListing)
@@ -2350,7 +2355,7 @@ function AdminPage() {
     const updated = {...listing, featured: !listing.featured};
     setListings(p=>p.map(l=>l.id===id?updated:l));
     try {
-      await fetch(`/api/listings/${id}`, {
+      await fetch(`${API_BASE}/api/listings/${id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(updated)
@@ -2362,7 +2367,7 @@ function AdminPage() {
     const updated = {...listing, premium: !listing.premium};
     setListings(p=>p.map(l=>l.id===id?updated:l));
     try {
-      await fetch(`/api/listings/${id}`, {
+      await fetch(`${API_BASE}/api/listings/${id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(updated)
@@ -2374,7 +2379,7 @@ function AdminPage() {
     setEdit(null); 
     showToast("Updated!");
     try {
-      await fetch(`/api/listings/${u.id}`, {
+      await fetch(`${API_BASE}/api/listings/${u.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(u)
@@ -2386,7 +2391,7 @@ function AdminPage() {
       setListings(p=>p.filter(l=>l.id!==id)); 
       showToast("Deleted.");
       try {
-        await fetch(`/api/listings/${id}`, { method: "DELETE" });
+        await fetch(`${API_BASE}/api/listings/${id}`, { method: "DELETE" });
       } catch (err) { console.error("Failed to sync deletion:", err); }
     } 
   };
@@ -2420,7 +2425,7 @@ function AdminPage() {
     setPendingReviews(p=>p.filter(r=>r.id!==rv.id)); 
     showToast("Review approved!");
     try {
-      await fetch(`/api/listings/${rv.listingId}`, {
+      await fetch(`${API_BASE}/api/listings/${rv.listingId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(updatedListing)
@@ -2763,7 +2768,7 @@ export default function App() {
   }, [logoImage]);
   // Load listings from backend on startup
   useEffect(() => {
-    fetch("/api/listings")
+    fetch(`${API_BASE}/api/listings")
       .then(res => res.json())
       .then(data => {
         if (data.listings && data.listings.length > 0) {
@@ -2792,7 +2797,7 @@ export default function App() {
   useEffect(() => {
     if (user?.email) {
       // Load from backend
-      fetch(`/api/bookmarks/${encodeURIComponent(user.email)}`)
+      fetch(`${API_BASE}/api/bookmarks/${encodeURIComponent(user.email)}`)
         .then(res => res.json())
         .then(data => {
           setSavedIds(data.savedIds || []);
@@ -2829,7 +2834,7 @@ export default function App() {
     setSavedIds(p => p.includes(id) ? p.filter(x => x !== id) : [...p, id]);
     
     try {
-      const res = await fetch(`/api/bookmarks/${encodeURIComponent(user.email)}/toggle`, {
+      const res = await fetch(`${API_BASE}/api/bookmarks/${encodeURIComponent(user.email)}/toggle`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ listingId: id })
